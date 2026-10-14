@@ -23,12 +23,8 @@ data_facts:       source: data/derived/ingest_manifest.json (config_sha cfe402a6
                       Start it in the background once S1 passes; it resumes on restart.
                   case types, gemma–keyword agreement: – (after intake) · hh agreement: – (T02)
 runs:             –
-open_questions:   1
-                  Q2 (line endings → policy_sha): core.autocrlf=true and there is no .gitattributes, so policy/*.md and
-                     examples_v1.jsonl are CRLF in this Windows checkout and LF on a Linux droplet. policy_sha =
-                     sha256(file bytes) (master §12.1) would then differ by machine. prompt_sha is unaffected (read_text
-                     normalises newlines). Proposal: add `.gitattributes` with `policy/** text eol=lf` before T03 writes
-                     POLICY_VERSION to the ledger. Needs approval (file outside every module SCOPE so far).
+open_questions:   0 (Q2 resolved by D-eol: .gitattributes forces LF under policy/; this checkout was already LF,
+                  a fresh clone without it was CRLF)
 resume_point:     T01 complete under the mock. When the Token Factory key is whitelisted, in order:
                   1. real TENURE_LLM_* in .env → `uv run tenure smoke --n 3` (S1) → re-run gates G00 and G01 live;
                   2. `uv run tenure spike s3` then `uv run tenure spike s2`; copy the printed lines here; approve D-mode;

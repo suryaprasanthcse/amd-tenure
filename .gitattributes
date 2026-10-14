@@ -1,0 +1,2 @@
+# policy_sha = sha256(file bytes) (master §12.1) must not depend on the checkout platform (D-eol).
+policy/** text eol=lf
