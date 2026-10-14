@@ -8,7 +8,7 @@ paths:
   runs: var/runs
 currency:
   brl_per_eur: "6.00"          # ASSUMPTION — approved by the human on 2026-10-14 (D-fx); not a cited reference rate
-bands_cents: {V1: 0, V2: 1500, V3: 4000, V4: 10000}
+bands_cents: {V1: 0, V2: 1500, V3: 4000, V4: 7500}   # D-band: V4 lowered from 10000 (3.83% of cases < 5%)
 splits:
   train: ["2017-01-01", "2018-01-01"]
   replay: ["2018-01-01", "2018-07-01"]

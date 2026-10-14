@@ -72,7 +72,8 @@ def test_config_sha_stable_and_sensitive(tmp_path):
 def test_ingest_config_mirrors_yaml():
     ic = ingest_config(load(YAML, env={}))
     assert ic.brl_per_eur == Decimal("6.00") and ic.seed == 20261018
-    assert ic.bands == VALUE_BANDS
+    assert ic.bands == (("V1", 0), ("V2", 1500), ("V3", 4000), ("V4", 7500))  # D-band; R.1 default unchanged
+    assert VALUE_BANDS[-1] == ("V4", 10_000)
     assert ic.splits[0] == ("train", date(2017, 1, 1), date(2018, 1, 1))
     assert ic.photo_rate == pytest.approx(0.60) and ic.prior_claims_for_fraud == 2
 
