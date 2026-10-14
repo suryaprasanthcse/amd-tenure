@@ -1,0 +1,82 @@
+seed: 20261018
+paths:
+  raw: data/raw
+  derived: data/derived
+  gold: data/gold
+  outcomes_db: var/outcomes.db
+  ledger_db: var/ledger.db
+  runs: var/runs
+currency:
+  brl_per_eur: "6.00"          # ASSUMPTION — approved by the human on 2026-10-14 (D-fx); not a cited reference rate
+bands_cents: {V1: 0, V2: 1500, V3: 4000, V4: 10000}
+splits:
+  train: ["2017-01-01", "2018-01-01"]
+  replay: ["2018-01-01", "2018-07-01"]
+  live: ["2018-07-01", "2018-09-01"]
+synthetic:
+  photo_rate: 0.60
+  fraud_rate: 0.005
+  prior_claims_for_fraud: 2
+  double_rate: 0.15
+policy:
+  file: policy/refund_rules_v1.md
+  examples: policy/examples_v1.jsonl
+  drift_file: policy/refund_rules_v2.md
+  drift_date: "2018-08-01"
+inference:
+  default_profile: token_factory
+  profiles:
+    token_factory:
+      base_url_env: TENURE_LLM_BASE_URL
+      api_key_env: TENURE_LLM_API_KEY
+      model_env: TENURE_LLM_MODEL
+      structured_mode: json_schema   # set by S3
+      system_mode: system            # set by S3
+      concurrency: 64                # set by S2
+    vllm_droplet:
+      base_url_env: TENURE_VLLM_BASE_URL
+      api_key_env: TENURE_VLLM_API_KEY
+      model_env: TENURE_VLLM_MODEL
+      structured_mode: vllm_structured
+      system_mode: system
+      concurrency: 128
+  decoding: {temperature: 0, top_p: 1, seed: 0, max_tokens: 256}
+  timeout_s: 60
+  max_retries: 6
+agreement: {tol_abs_cents: 50, tol_rel_bp: 1000}
+ladder:
+  confirm_ticks: 2
+  tick_k: 250
+  baseline_n_min: 60
+  ni_mode: fixed_baseline        # or strict (Newcombe), decision D-ni
+  arl0_target: 500
+  max_detect_days: 60            # decision D-dmax
+  cost_eps_abs_cents: 50
+  cost_rho: 0.25
+  bootstrap_b: 2000
+  high_value_cents: 50000
+  gates:
+    L1: {n_min: 30,  delta: 0.10, min_valid_rate: 0.98, cost_gate: false, monitor_gate: false, dwell: 0}
+    L2: {n_min: 150, delta: 0.05, min_valid_rate: 0.98, cost_gate: true,  monitor_gate: true,  dwell: 50}
+    L3: {n_min: 400, delta: 0.03, min_valid_rate: 0.99, cost_gate: true,  monitor_gate: true,  dwell: 100}
+  ceilings: {OTHER: L1, BILLING: L1}
+  audit_rate: {L2: 0.10, L3: 0.02}
+  global_alarm: {arl0_target: 1000, shift: 0.05}
+cost:                            # all ASSUMPTIONS (§5.6)
+  clv_multiple: 0.60
+  churn_max: 0.25
+  cogs_ratio: 0.60
+  salvage_ratio: 0.50
+  return_shipping_cents: 800
+  unesc_cents: 400
+  missed_cents: 2500
+business:                        # ASSUMPTIONS except where measured (§8.5)
+  handle_minutes: [3, 6, 10]
+  wage_eur_per_hour: 22.0
+  assist_saving: [0.20, 0.40]
+  gpu_eur_per_hour: 2.00         # ASSUMPTION — set from your AMD Developer Cloud invoice rate
+  draws: 10000
+server:
+  host: 0.0.0.0
+  port: 8080
+  admin_token_env: TENURE_ADMIN_TOKEN

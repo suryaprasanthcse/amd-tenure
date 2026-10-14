@@ -1,0 +1,72 @@
+﻿
+=================================== ERRORS ====================================
+___________ ERROR collecting tests/integration/test_ingest_real.py ____________
+ImportError while importing test module 'C:\myspace\hacckathons\amd-tenure\tests\integration\test_ingest_real.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Users\surya\.local\share\uv\python\cpython-3.12-windows-x86_64-none\Lib\importlib\__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\integration\test_ingest_real.py:7: in <module>
+    from tenure.config import ingest_config, load
+E   ModuleNotFoundError: No module named 'tenure.config'
+________________ ERROR collecting tests/integration/test_io.py ________________
+ImportError while importing test module 'C:\myspace\hacckathons\amd-tenure\tests\integration\test_io.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Users\surya\.local\share\uv\python\cpython-3.12-windows-x86_64-none\Lib\importlib\__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\integration\test_io.py:9: in <module>
+    from tenure.llm import EndpointProfile, LLMClient
+E   ModuleNotFoundError: No module named 'tenure.llm'
+_____________ ERROR collecting tests/integration/test_llm_live.py _____________
+ImportError while importing test module 'C:\myspace\hacckathons\amd-tenure\tests\integration\test_llm_live.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Users\surya\.local\share\uv\python\cpython-3.12-windows-x86_64-none\Lib\importlib\__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\integration\test_llm_live.py:13: in <module>
+    from tenure.config import endpoint, load
+E   ModuleNotFoundError: No module named 'tenure.config'
+________________ ERROR collecting tests/unit/test_canonical.py ________________
+ImportError while importing test module 'C:\myspace\hacckathons\amd-tenure\tests\unit\test_canonical.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Users\surya\.local\share\uv\python\cpython-3.12-windows-x86_64-none\Lib\importlib\__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\unit\test_canonical.py:6: in <module>
+    from tenure.canonical import canonical_bytes, fx, sha256_hex
+E   ModuleNotFoundError: No module named 'tenure.canonical'
+_________________ ERROR collecting tests/unit/test_config.py __________________
+ImportError while importing test module 'C:\myspace\hacckathons\amd-tenure\tests\unit\test_config.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Users\surya\.local\share\uv\python\cpython-3.12-windows-x86_64-none\Lib\importlib\__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\unit\test_config.py:9: in <module>
+    from tenure.config import TenureConfig, config_sha, endpoint, ingest_config, load, load_dotenv
+E   ModuleNotFoundError: No module named 'tenure.config'
+_________________ ERROR collecting tests/unit/test_domain.py __________________
+ImportError while importing test module 'C:\myspace\hacckathons\amd-tenure\tests\unit\test_domain.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Users\surya\.local\share\uv\python\cpython-3.12-windows-x86_64-none\Lib\importlib\__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\unit\test_domain.py:5: in <module>
+    from tenure.domain import Case, CaseType, cell_id, int_hash, unit_hash, value_band
+E   ModuleNotFoundError: No module named 'tenure.domain'
+=========================== short test summary info ===========================
+ERROR tests/integration/test_ingest_real.py
+ERROR tests/integration/test_io.py
+ERROR tests/integration/test_llm_live.py
+ERROR tests/unit/test_canonical.py
+ERROR tests/unit/test_config.py
+ERROR tests/unit/test_domain.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 6 errors during collection !!!!!!!!!!!!!!!!!!!
+6 errors in 2.23s
+
