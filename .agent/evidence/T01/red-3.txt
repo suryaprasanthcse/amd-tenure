@@ -1,0 +1,5 @@
+    from tenure.intake import (INTAKE_SUBSETS, classify_keywords, freeze, hash_sample, keyword_case_type,
+E   ImportError: cannot import name 'INTAKE_SUBSETS' from 'tenure.intake' (C:\myspace\hacckathons\amd-tenure\src\tenure\intake.py)
+=========================== short test summary info ===========================
+ERROR tests/unit/test_intake_subsets.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
