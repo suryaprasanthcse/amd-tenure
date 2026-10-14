@@ -69,6 +69,7 @@ class Profile(_Strict):
     structured_mode: StructuredMode
     system_mode: Literal["system", "fold"]
     concurrency: int
+    rpm: int | None = None  # client-side request-rate limit for shared endpoints (D-rpm)
 
 
 class Decoding(_Strict):

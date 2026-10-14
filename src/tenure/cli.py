@@ -38,6 +38,7 @@ from .intake import (
 from .llm import STRUCTURED_MODES, Completion, EndpointProfile, LLMClient
 from .olist import build_cases, load_tables
 from .prompt import case_block, messages, prompt_sha, static_block
+from .ratelimit import RateLimitedTransport, shared_limiter
 from .schema import DECISION_SCHEMA, Parsed, parse_decision
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="TENURE: earned autonomy for refund agents.")
@@ -195,7 +196,8 @@ def smoke(n: int = typer.Option(3, "--n", min=1), config: Path = ConfigOpt) -> N
     if key == MOCK_API_KEY:
         console.print("S1: PENDING → TENURE_LLM_API_KEY is the mock key (D-llm-mock); set real TENURE_LLM_* values")
         raise typer.Exit(2)
-    r = s1_check(prof, key, n)
+    t = limited_transport(cfg, prof)
+    r = s1_check(prof, key, n, transport=t, async_transport=t)
     console.print(s1_state_line(r))
     if not r["pass"]:
         raise typer.Exit(1)
@@ -218,6 +220,12 @@ def _live_endpoint(cfg: TenureConfig, what: str) -> tuple[EndpointProfile, str]:
 
 def _profile_cfg(cfg: TenureConfig):
     return cfg.inference.profiles[cfg.inference.default_profile]
+
+
+def limited_transport(cfg: TenureConfig, prof: EndpointProfile) -> RateLimitedTransport | None:
+    """The profile's request-rate limit (D-rpm) as an httpx transport, shared per endpoint; None if unlimited."""
+    rpm = cfg.inference.profiles[prof.name].rpm
+    return None if rpm is None else RateLimitedTransport(shared_limiter(prof.base_url, rpm))
 
 
 def decider_static(root: Path, cfg: TenureConfig) -> str:
@@ -381,7 +389,7 @@ def intake(all_cases: bool = typer.Option(False, "--all", help="Classify every c
     system_mode, conc = _profile_cfg(cfg).system_mode, _profile_cfg(cfg).concurrency
 
     async def go() -> pd.DataFrame:
-        client = LLMClient(prof, key)
+        client = LLMClient(prof, key, transport=limited_transport(cfg, prof))
         try:
             return await run_intake(todo, derived / "intake.parquet",
                                     lambda df: classify_llm(client, df, conc, system_mode), prof.model,
@@ -408,7 +416,7 @@ def decide_sample(n: int = typer.Option(30, "--n", min=1), split: str = typer.Op
     static = decider_static(root, cfg)
     cases = sample_cases(root, cfg, split, n)
     res = asyncio.run(decide_many(prof, key, static, cases, _profile_cfg(cfg).system_mode,
-                                  _profile_cfg(cfg).concurrency))
+                                  _profile_cfg(cfg).concurrency, limited_transport(cfg, prof)))
     target = out if out.is_absolute() else root / out
     target.parent.mkdir(parents=True, exist_ok=True)
     with open(target, "w", encoding="utf-8", newline="\n") as f:
@@ -424,6 +432,7 @@ def decide_sample(n: int = typer.Option(30, "--n", min=1), split: str = typer.Op
 @app.command()
 def spike(name: str = typer.Argument(..., help="s2 or s3"), n: int = typer.Option(0, "--n", min=0),
           write: bool = typer.Option(True, "--write/--no-write", help="Write the result to tenure.yaml"),
+          levels: str = typer.Option("16,32,64,128", "--levels", help="S2 concurrency sweep, comma-separated"),
           config: Path = ConfigOpt) -> None:
     """Run spike S2 (throughput, prefix cache) or S3 (structured-output mode); prints a STATE-ready line."""
     if name not in ("s2", "s3"):
@@ -432,7 +441,7 @@ def spike(name: str = typer.Argument(..., help="s2 or s3"), n: int = typer.Optio
     root, cfg = _setup(config)
     prof, key = _live_endpoint(cfg, name.upper())
     if name == "s3":
-        r = s3_run(root, cfg, prof, key, n or 100)
+        r = s3_run(root, cfg, prof, key, n or 100, transport=limited_transport(cfg, prof))
         mode, system_mode = r["chosen"]
         if write:
             set_profile_modes(config, cfg.inference.default_profile, mode, system_mode)
@@ -442,7 +451,8 @@ def spike(name: str = typer.Argument(..., help="s2 or s3"), n: int = typer.Optio
                       f"valid={[(t['mode'], t['system_mode'], t['valid_rate']) for t in r['trials']]}, "
                       f"record {path.relative_to(root)}")
     else:
-        r = s2_run(root, cfg, prof, key, n or 500)
+        r = s2_run(root, cfg, prof, key, n or 500, tuple(int(x) for x in levels.split(",")),
+                   transport=limited_transport(cfg, prof))
         if write and r["best_concurrency"]:
             p = _profile_cfg(cfg)
             set_profile_modes(config, cfg.inference.default_profile, p.structured_mode, p.system_mode,
