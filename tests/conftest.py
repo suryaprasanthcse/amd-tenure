@@ -44,8 +44,41 @@ class LLMEndpoint:
         return self.transport is not None
 
 
+def _schema_instance(schema: dict) -> object:
+    """The simplest value that satisfies a JSON schema (first enum value, minimum, null when allowed)."""
+    if "anyOf" in schema:
+        options = schema["anyOf"]
+        return None if {"type": "null"} in options else _schema_instance(options[0])
+    if "enum" in schema:
+        return schema["enum"][0]
+    kind = schema.get("type")
+    if kind == "object":
+        return {k: _schema_instance(v) for k, v in schema.get("properties", {}).items()}
+    if kind == "number" or kind == "integer":
+        return schema.get("minimum", 0)
+    if kind == "boolean":
+        return False
+    if kind == "null":
+        return None
+    return "mock"
+
+
+def _request_schema(body: dict) -> dict | None:
+    """The structured-output schema of a request in any of the master §13.2 modes, else None (mode none)."""
+    rf = body.get("response_format") or {}
+    if rf.get("type") == "json_schema":
+        return rf["json_schema"]["schema"]
+    if isinstance(body.get("structured_outputs"), dict):
+        return body["structured_outputs"].get("json")
+    return body.get("guided_json")
+
+
 def mock_openai_transport(model: str, api_key: str) -> httpx.MockTransport:
-    """A minimal OpenAI-compatible endpoint: GET /models and POST /chat/completions."""
+    """A minimal OpenAI-compatible endpoint: GET /models and POST /chat/completions.
+
+    A constrained request (master §13.2) gets the simplest schema-valid JSON object; an unconstrained one
+    gets free text. That exercises the request and parse path only: it says nothing about Gemma's answers.
+    """
 
     def handler(req: httpx.Request) -> httpx.Response:
         if req.headers.get("authorization") != f"Bearer {api_key}":
@@ -56,8 +89,10 @@ def mock_openai_transport(model: str, api_key: str) -> httpx.MockTransport:
             body = json.loads(req.content)
             if body.get("model") != model:
                 return httpx.Response(404, json={"error": {"message": "unknown model"}})
+            schema = _request_schema(body)
+            content = "Olá! Pedido recebido." if schema is None else json.dumps(_schema_instance(schema))
             return httpx.Response(200, json={
-                "choices": [{"index": 0, "message": {"role": "assistant", "content": "Olá! Pedido recebido."}}],
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": content}}],
                 "usage": {"prompt_tokens": 12, "completion_tokens": 5}})
         return httpx.Response(404)
 
