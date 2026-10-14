@@ -27,13 +27,17 @@ from .config import TenureConfig, config_sha, endpoint, ingest_config, load, loa
 from .domain import Case, CaseType
 from .intake import (
     case_from_record,
+    classify_keywords,
     classify_llm,
     intake_prompt_sha,
     keyword_agreement,
     keyword_case_type,
+    keyword_rules_sha,
+    keywords_rest_blockers,
     load_examples,
     merge_into_cases,
     run_intake,
+    subset_cases,
 )
 from .llm import STRUCTURED_MODES, Completion, EndpointProfile, LLMClient
 from .olist import build_cases, load_tables
@@ -374,31 +378,52 @@ def _spike_record(root: Path, name: str, prof: EndpointProfile, result: dict[str
 
 
 @app.command()
-def intake(all_cases: bool = typer.Option(False, "--all", help="Classify every case (resumable)"),
-           n: int = typer.Option(0, "--n", min=0, help="Classify only the first n cases by case_id"),
+def intake(subset: str = typer.Option("", "--subset", help="Gemma on one D-intake subset: gold-pool or slice"),
+           keywords_rest: bool = typer.Option(False, "--keywords-rest",
+                                              help="Keyword labels for every unlabelled case (no network)"),
+           all_cases: bool = typer.Option(False, "--all", help="Gemma on every case (refused on rate-limited profiles)"),
            batch_size: int = typer.Option(500, "--batch-size", min=1), config: Path = ConfigOpt) -> None:
-    """Frozen intake (master §11): Gemma with keyword fallback → intake.parquet, merged into cases.parquet."""
-    if not all_cases and n == 0:
-        console.print("pass --all or --n N")
+    """Frozen intake (master §11, D-intake): Gemma with keyword fallback → intake.parquet, merged into cases.parquet."""
+    if sum((bool(subset), keywords_rest, all_cases)) != 1:
+        console.print("pass exactly one of --subset gold-pool|slice, --keywords-rest, --all")
         raise typer.Exit(2)
     root, cfg = _setup(config)
-    prof, key = _live_endpoint(cfg, "intake")
     derived = root / cfg.paths.derived
+    out = derived / "intake.parquet"
     cases = pd.read_parquet(derived / "cases.parquet")
-    todo = cases if all_cases else cases.sort_values("case_id").head(n)
-    system_mode, conc = _profile_cfg(cfg).system_mode, _profile_cfg(cfg).concurrency
+    def progress(done: int, total: int) -> None:
+        console.print(f"intake {done}/{total}")
 
-    async def go() -> pd.DataFrame:
-        client = LLMClient(prof, key, transport=limited_transport(cfg, prof))
+
+    if keywords_rest:
+        blockers = keywords_rest_blockers(cases, pd.read_parquet(out) if out.exists() else None, cfg.seed)
+        if blockers:
+            console.print(f"--keywords-rest refused: Gemma subsets still have unlabelled cases {blockers}")
+            raise typer.Exit(1)
+        frozen = asyncio.run(run_intake(cases, out, classify_keywords, "keywords", keyword_rules_sha(), batch_size,
+                                        progress))
+    else:
+        prof, key = _live_endpoint(cfg, "intake")
+        if all_cases and _profile_cfg(cfg).rpm is not None:
+            console.print(f"--all refused: profile {prof.name} is rate-limited ({_profile_cfg(cfg).rpm} rpm); "
+                          "use --subset (D-intake)")
+            raise typer.Exit(2)
         try:
-            return await run_intake(todo, derived / "intake.parquet",
-                                    lambda df: classify_llm(client, df, conc, system_mode), prof.model,
-                                    intake_prompt_sha(), batch_size,
-                                    lambda done, total: console.print(f"intake {done}/{total}"))
-        finally:
-            await client.aclose()
+            todo = cases if all_cases else subset_cases(cases, subset, cfg.seed)
+        except ValueError as e:
+            console.print(str(e))
+            raise typer.Exit(2) from e
+        system_mode, conc = _profile_cfg(cfg).system_mode, _profile_cfg(cfg).concurrency
 
-    frozen = asyncio.run(go())
+        async def go() -> pd.DataFrame:
+            client = LLMClient(prof, key, transport=limited_transport(cfg, prof))
+            try:
+                return await run_intake(todo, out, lambda df: classify_llm(client, df, conc, system_mode), prof.model,
+                                        intake_prompt_sha(), batch_size, progress)
+            finally:
+                await client.aclose()
+
+        frozen = asyncio.run(go())
     merge_into_cases(cases, frozen).to_parquet(derived / "cases.parquet", index=False)
     console.print(f"{len(frozen)} labelled · sources {dict(frozen['source'].value_counts())}")
     console.print(f"case types {dict(frozen['case_type'].value_counts().sort_index())}")

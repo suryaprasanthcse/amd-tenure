@@ -18,7 +18,7 @@ from typing import Any
 import pandas as pd
 
 from .canonical import sha256_hex
-from .domain import Case, CaseType
+from .domain import Case, CaseType, unit_hash
 from .llm import LLMClient
 from .prompt import case_block, messages
 
@@ -197,6 +197,53 @@ async def run_intake(cases: pd.DataFrame, out_path: Path, classify: Classifier, 
         _write_atomic(_empty_frozen(), out_path)
         frozen = pd.read_parquet(out_path)
     return frozen
+
+
+# D-intake: Gemma labels two hash-sampled subsets; the keyword rules label every other case.
+# name → (split, hash tag, size). Fixed by decision D-intake (approved 2026-10-15).
+INTAKE_SUBSETS: dict[str, tuple[str, str, int]] = {
+    "gold-pool": ("live", "goldpool", 1_500),  # T02 draws the 300 gold cases from this pool (amends master §15)
+    "slice": ("replay", "slice", 3_000),  # the live replay slice (Q4 option a)
+}
+
+
+def hash_sample(cases: pd.DataFrame, split: str, tag: str, n: int, seed: int) -> pd.DataFrame:
+    """The n cases of a split with the smallest unit_hash(seed, tag, case_id), returned in case_id order."""
+    rows = cases[cases["split"] == split]
+    keys = sorted((unit_hash(str(seed), tag, c), c) for c in rows["case_id"])
+    chosen = {c for _, c in keys[:n]}
+    return rows[rows["case_id"].isin(chosen)].sort_values("case_id", kind="stable").reset_index(drop=True)
+
+
+def subset_cases(cases: pd.DataFrame, name: str, seed: int,
+                 subsets: Mapping[str, tuple[str, str, int]] = INTAKE_SUBSETS) -> pd.DataFrame:
+    if name not in subsets:
+        raise ValueError(f"unknown intake subset {name!r}; expected one of {sorted(subsets)}")
+    split, tag, n = subsets[name]
+    return hash_sample(cases, split, tag, n, seed)
+
+
+def keywords_rest_blockers(cases: pd.DataFrame, frozen: pd.DataFrame | None, seed: int,
+                           subsets: Mapping[str, tuple[str, str, int]] = INTAKE_SUBSETS) -> dict[str, int]:
+    """Unlabelled cases per Gemma subset. The keyword fill may run only when this is empty, because the
+    first label written wins and a keyword label must never be frozen onto a case meant for Gemma."""
+    done = set() if frozen is None else set(frozen["case_id"])
+    out = {}
+    for name in sorted(subsets):
+        missing = sum(c not in done for c in subset_cases(cases, name, seed, subsets)["case_id"])
+        if missing:
+            out[name] = missing
+    return out
+
+
+async def classify_keywords(rows: pd.DataFrame) -> list[tuple[CaseType, str]]:
+    """The keyword rules as a run_intake classifier (source = keywords); no network."""
+    return [(keyword_case_type(m, _score(s)), "keywords") for m, s in zip(rows["message"], rows["review_score"])]
+
+
+def keyword_rules_sha() -> str:
+    """Identifies the keyword rule set; stored as intake_prompt_sha on keyword-labelled rows."""
+    return sha256_hex(json.dumps([[t.value, p] for t, p in _KEYWORD_RULES], ensure_ascii=False))
 
 
 def keyword_agreement(cases: pd.DataFrame, frozen: pd.DataFrame) -> dict[str, tuple[int, int]]:
