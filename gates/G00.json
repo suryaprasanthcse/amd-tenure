@@ -1,0 +1,25 @@
+{
+  "gate": "G00",
+  "module": "T00",
+  "status": "green",
+  "commit": "ca580c2932bd6a80f8204fda355e8ea9f68e85eb",
+  "utc": "2026-10-14T15:43:45+00:00",
+  "tests": {
+    "tests": 45,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "coverage": {
+    "__init__": 1.0,
+    "canonical": 0.975,
+    "cli": 0.0,
+    "config": 1.0,
+    "domain": 1.0,
+    "llm": 0.9032,
+    "olist": 0.9904,
+    "store": 0.9744
+  },
+  "forbidden": 0,
+  "problems": []
+}

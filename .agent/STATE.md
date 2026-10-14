@@ -1,23 +1,20 @@
 # STATE
-current_module:   T00   status: blocked (D-band)
-last_green_gate:  none
-platform_facts:   S1: PENDING → mock key in .env (D-llm-mock); real TENURE_LLM_* not yet available
+current_module:   T00   status: green
+last_green_gate:  G00 (gates/G00.json; 45 tests, 0 skipped; G00 llm tests ran against the D-llm-mock endpoint)
+platform_facts:   S1: PENDING → mock key in .env (D-llm-mock). Not verified against AMD Token Factory.
+                      To verify: put real TENURE_LLM_* in .env, run `uv run tenure smoke --n 3`
+                      (or scripts/spikes/s1_models.py), then re-run `uv run python scripts/gate.py G00`.
+                      MUST be done before T01's S2/S3 spikes. S1 FAIL → open question "use droplet profile?" (master §24).
                   S2: – · S3: – · S4/S5/S6: –
-data_facts:       42,157 cases with text (build_cases on data/raw, brl_per_eur 6.00 ASSUMPTION)
-                  band shares (all cases, current edges 0/1500/4000/10000): V1 0.4035, V2 0.4334, V3 0.1248, V4 0.0383
-                  order_total EUR quantiles: p50 18.39, p75 31.13, p90 54.16, p95 82.92, p96 96.85
-                  split counts, delivered share: pending `tenure ingest` after D-band
+data_facts:       source: data/derived/ingest_manifest.json (config_sha cfe402a6…a8a9, brl_per_eur 6.00 ASSUMPTION D-fx)
+                  cases with text: 42,157 · contact dates 2016-10-06 … 2018-08-31
+                  by split: train 17,496 · replay 17,985 · live 6,454 · excluded 222
+                  by band (edges 0/1500/4000/7500, D-band): V1 17,010 (.4035) · V2 18,270 (.4334) · V3 4,434 (.1052) · V4 2,443 (.0580)
+                  split × band: train 7271/7329/1898/998 · replay 7049/8027/1858/1051 · live 2601/2835/642/376
+                  delivered share: 0.9673
+                  case types, hh agreement: – (T01 intake, T02 team)
 runs:             –
-open_questions:   1
-  Q1 [BLOCKING] D-band: V4 holds 3.83% (< 5%). Options, shares measured on all cases:
-     (a) V4 edge 10000 → 8000 (€80):        V1 .4035 V2 .4334 V3 .1106 V4 .0525
-     (b) V4 edge 10000 → 7500 (€75):        V1 .4035 V2 .4334 V3 .1052 V4 .0580
-     (c) V3 3000, V4 7500 (€30 / €75):      V1 .4035 V2 .3327 V3 .2058 V4 .0580
-     (d) 0/1000/2000/4000 (€10/€20/€40):    V1 .2178 V2 .3262 V3 .2928 V4 .1631
-     Changing edges touches tenure.yaml bands_cents and, for test_value_band_edges, domain.VALUE_BANDS
-     (Appendix R.1) → needs approval as a DECISIONS entry before any edit (C1).
-resume_point:     T00 STEP 2 done except D-band. All 44 other G00 tests pass (green-1.txt is the pre-decision run).
-                  Next: apply D-band → `uv run tenure ingest` → record data_facts → commit feat(T00) → gate G00 → handoff.
-                  Implementation is in the working tree, not yet committed (C3(g) waits for green).
+open_questions:   0 (Q1 D-band resolved: V4 edge 7,500 cents)
+resume_point:     T00 complete. Next: T01 in a fresh session (needs a real endpoint for its llm tests and S2/S3).
 module_table:     | module | gate | status | commit |
-                  | T00 | G00 | blocked (D-band) | 0ded756 (test) |
+                  | T00 | G00 | green (S1 pending, mock LLM) | ca580c2 (feat) |
