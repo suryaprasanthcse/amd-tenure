@@ -1,11 +1,9 @@
 # STATE
-current_module:   T01   status: live stages done; G01 re-run BLOCKED on Q3 (two T00 config assertions pin the pre-S3 mode)
-last_green_gate:  G01 (gates/G01.json, commit 3d09b72; 171 tests, 0 skipped; that run used the D-llm-mock endpoint)
-                  Live evidence since (2026-10-15, real endpoint, 30 RPM limiter):
-                  - all 45 G00 tests pass live (.agent/evidence/T01/g00-live.txt; gate.py G00 is red only on coverage of
-                    T01 modules, which G00 markers never exercise, so gates/G00.json keeps its original record);
-                  - all 4 llm tests of G00+G01 pass live in 483 s (.agent/evidence/T01/llm-live.txt);
-                  - offline: the non-llm tests pass except the 2 Q3 assertions, which fail since S3 rewrote tenure.yaml.
+current_module:   T01   status: green LIVE (G01 re-run on the real endpoint, 5e20f29)
+last_green_gate:  G01 (gates/G01.json, commit 5e20f29; 178 tests, 0 failures, 0 skipped, 504 s, live Token Factory
+                  endpoint behind the 30 RPM limiter; ratelimit 100%, policy 98.7%, schema 97.3%, intake 97.1%)
+                  G00 tests also pass live (45/45, .agent/evidence/T01/g00-live.txt); gates/G00.json keeps its original
+                  record because gate.py G00 now trips on coverage of T01 modules, which G00 markers never exercise.
 platform_facts:   S1: PASS (2026-10-15) → host=developer.amd.com.cn, model=Gemma-4-31B-IT, models_status=200,
                       listed=True, gemma=True, completions=3/3, rate_limit_headers: none reported
                       (`uv run tenure smoke --n 3`; .env holds the live TENURE_LLM_* values; D-llm-mock retired)
@@ -35,11 +33,7 @@ data_facts:       source: data/derived/ingest_manifest.json (config_sha cfe402a6
                       spend cap). The live G01 intake test classified 50 replay cases (≥ 48 by Gemma) without freezing. → Q5
                   case types, gemma–keyword agreement: – (after intake) · hh agreement: – (T02)
 runs:             –
-open_questions:   3
-                  Q3 (test edit, C4/C11): tests/unit/test_config.py lines 33 and 84 assert token_factory
-                     structured_mode == "json_schema", the pre-S3 default. RUNBOOK T01 has S3 write the measured mode to
-                     tenure.yaml, and S3 chose vllm_structured. Proposal: assert the value is in STRUCTURED_MODES
-                     (line 33) and that endpoint() passes the yaml value through (line 84). Needs approval to edit them.
+open_questions:   2 (Q3 resolved by D-q3: the two config assertions accept the S3-measured mode)
                   Q4 (S2 fail → master §24 fallback): ~20 cases/min under 30 RPM. Options: (a) live replay of a
                      3k-case slice (~2.5 h) and pre-run the rest elsewhere; (b) move replay to the vllm_droplet profile
                      (MI300X); (c) both: droplet for bulk, Token Factory slice as the "live AMD endpoint" demo. Decide before T03.
@@ -47,8 +41,8 @@ open_questions:   3
                      (a) Gemma on a bounded sample (e.g. the 3k replay slice of Q4 + gold set), keywords for the rest,
                          source column records which; (b) keywords for all now (frozen; Gemma never labels these);
                      (c) defer intake until the droplet profile exists, then Gemma for all. T02 needs case types.
-resume_point:     Answer Q3 → edit the two assertions → `uv run python scripts/gate.py G01` (live, ~8 min) → gate commit.
-                  Answer Q5 → run intake as decided (never `intake --all` live on Token Factory). Answer Q4 before T03.
+resume_point:     T01 complete and green live. Before T02 on real data: answer Q5 and run intake as decided
+                  (never `intake --all` live on Token Factory). Answer Q4 before T03. D-mode still awaits approval.
 module_table:     | module | gate | status | commit |
                   | T00 | G00 | green (live re-run: 45/45 pass) | ca580c2 (feat) |
-                  | T01 | G01 | green on mock (3d09b72); live re-run pending Q3 | 5e124f3 (D-rpm feat) |
+                  | T01 | G01 | green live (5e20f29); intake pending Q5 | 3d09b72, 5e124f3 (feat) |
