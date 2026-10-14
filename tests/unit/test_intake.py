@@ -9,9 +9,24 @@ import pandas as pd
 import pytest
 
 from tenure.domain import Case, CaseType
-from tenure.intake import (INTAKE_COLUMNS, INTAKE_PROMPT, INTAKE_SCHEMA, KEYWORD_ORDER, case_from_record,
-                           classify_llm, freeze, intake_messages, intake_prompt_sha, keyword_case_type, load_examples,
-                           merge_into_cases, parse_intake, pending_cases, run_intake)
+from tenure.intake import (
+    INTAKE_COLUMNS,
+    INTAKE_PROMPT,
+    INTAKE_SCHEMA,
+    KEYWORD_ORDER,
+    case_from_record,
+    classify_llm,
+    freeze,
+    intake_messages,
+    intake_prompt_sha,
+    keyword_agreement,
+    keyword_case_type,
+    load_examples,
+    merge_into_cases,
+    parse_intake,
+    pending_cases,
+    run_intake,
+)
 from tenure.llm import EndpointProfile, LLMClient
 from tenure.prompt import case_block
 
@@ -294,3 +309,22 @@ def test_load_examples():
     for text, answer in ex:
         assert text.startswith("CASE FILE\n") and text.endswith("Decide.")
         assert set(answer) == {"rationale", "policy_clause", "action", "amount_eur", "requires_return", "confidence"}
+
+
+def test_intake_with_nothing_pending_writes_an_empty_frozen_file(tmp_path):
+    out = tmp_path / "intake.parquet"
+
+    async def never(df: pd.DataFrame) -> list[tuple[CaseType, str]]:
+        raise AssertionError("no case should be classified")
+
+    empty = asyncio.run(run_intake(_rows([]), out, never, "m1", "sha1"))
+    assert len(empty) == 0 and list(empty.columns) == list(INTAKE_COLUMNS) and out.exists()
+
+
+def test_keyword_agreement_counts_only_gemma_labels():
+    cases = _rows(["chegou quebrado", "chegou quebrado", "atrasou", "ok"], [3, 3, 3, 5])
+    frozen = pd.DataFrame({"case_id": ["k000", "k001", "k002", "k003"],
+                           "case_type": ["DAMAGED", "QUALITY", "DELAY", "POSITIVE"],
+                           "source": ["gemma", "gemma", "gemma", "keywords"], "intake_model": "m",
+                           "intake_prompt_sha": "s"})
+    assert keyword_agreement(cases, frozen) == {"DAMAGED": (1, 1), "DELAY": (1, 1), "QUALITY": (0, 1)}
