@@ -1,16 +1,28 @@
 # STATE
-current_module:   T01   status: green (G01, feat 3d09b72)
-last_green_gate:  G01 (gates/G01.json; 171 tests, 0 skipped; llm tests ran against the D-llm-mock endpoint)
+current_module:   T01   status: live stages done; G01 re-run BLOCKED on Q3 (two T00 config assertions pin the pre-S3 mode)
+last_green_gate:  G01 (gates/G01.json, commit 3d09b72; 171 tests, 0 skipped; that run used the D-llm-mock endpoint)
+                  Live evidence since (2026-10-15, real endpoint, 30 RPM limiter):
+                  - all 45 G00 tests pass live (.agent/evidence/T01/g00-live.txt; gate.py G00 is red only on coverage of
+                    T01 modules, which G00 markers never exercise, so gates/G00.json keeps its original record);
+                  - all 4 llm tests of G00+G01 pass live in 483 s (.agent/evidence/T01/llm-live.txt);
+                  - offline: the non-llm tests pass except the 2 Q3 assertions, which fail since S3 rewrote tenure.yaml.
 platform_facts:   S1: PASS (2026-10-15) → host=developer.amd.com.cn, model=Gemma-4-31B-IT, models_status=200,
                       listed=True, gemma=True, completions=3/3, rate_limit_headers: none reported
-                      (`uv run tenure smoke --n 3`; .env now holds the live TENURE_LLM_* values, D-llm-mock retired)
-                      Live re-runs of G00/G01 not done yet: the session's permission classifier blocked further
-                      traffic to this host pending the human's confirmation.
-                  S2: PENDING (needs S1). Run `uv run tenure spike s2` → var/spikes/S2.json, writes concurrency to tenure.yaml.
-                  S3: PENDING (needs S1). Run `uv run tenure spike s3` → var/spikes/S3.json, writes structured_mode and
-                      system_mode to tenure.yaml. Until then tenure.yaml keeps json_schema/system (D-mode proposed).
-                  Code paths of both spikes were dry-run against the in-process mock: S3 picked json_schema/system,
-                  S2 reported FAIL (no cache evidence), which is the correct mock outcome. No mock numbers are recorded.
+                      (`uv run tenure smoke --n 3`; .env holds the live TENURE_LLM_* values; D-llm-mock retired)
+                  Rate limit: shared 30 RPM + daily spend cap (human, 2026-10-15) → D-rpm, client-side limiter.
+                  S2: FAIL on throughput, cache proven (var/spikes/S2.json; reduced sweep under D-rpm: n=40, c=1 and 4)
+                      c=1: 14.0 cases/min, p50/p95 2570/10864 ms · c=4: 19.5 cases/min, p50/p95 8133/32708 ms,
+                      attempts_max 4 (429 retries on the shared limit) · error rate 0 · valid 1.0 at both levels
+                      cached_ratio 0.9997 (usage cached_tokens) · cold/warm probe 3665/2487 ms · ~2.9k prompt tokens/case
+                      Pass needs ≥ 750 cases/min; at ~20/min a 15k-case replay takes ~13 h → Q4. tenure.yaml concurrency 4.
+                  S3: PASS (var/spikes/S3.json, 100 replay cases per trial) → structured_mode=vllm_structured, system_mode=fold
+                      json_schema/system 0/100 and json_schema/fold 0/100 (HTTP_400 on every request: field rejected)
+                      vllm_structured/system 98/100 (2 SCHEMA_ERROR) · vllm_structured/fold 100/100
+                      Caveat: completions arrive wrapped in ```json fences, which a grammar-constrained decoder could not
+                      emit, so the endpoint probably accepts but ignores `structured_outputs`; validity comes from
+                      parse_decision's fence stripping. D-mode proposed accordingly.
+                      Latencies in S3.json include limiter queueing (100 tasks gathered at 2 s spacing); use S2's.
+                  decide_sample: 30/30 valid (tests/fixtures/llm/decide_sample.jsonl, vllm_structured, Gemma-4-31B-IT)
                   S4/S5/S6: –
                   prompt_sha (decider static block, policy v1 + 5 examples): 29fd791f3a0adbb12558a886052718ccc5dccac77698fee5fbedba8eda4f54f0
 data_facts:       source: data/derived/ingest_manifest.json (config_sha cfe402a6…a8a9, brl_per_eur 6.00 ASSUMPTION D-fx)
@@ -19,19 +31,24 @@ data_facts:       source: data/derived/ingest_manifest.json (config_sha cfe402a6
                   by band (edges 0/1500/4000/7500, D-band): V1 17,010 (.4035) · V2 18,270 (.4334) · V3 4,434 (.1052) · V4 2,443 (.0580)
                   split × band: train 7271/7329/1898/998 · replay 7049/8027/1858/1051 · live 2601/2835/642/376
                   delivered share: 0.9673
-                  intake: NOT STARTED. `uv run tenure intake --all` refuses the mock key (exit 2) on purpose: intake
-                      labels are frozen forever, so a keyword-only run now would block Gemma labels later.
-                      Start it in the background once S1 passes; it resumes on restart.
+                  intake: NOT STARTED, by instruction: the human ruled out sending all 42,157 messages live (30 RPM,
+                      spend cap). The live G01 intake test classified 50 replay cases (≥ 48 by Gemma) without freezing. → Q5
                   case types, gemma–keyword agreement: – (after intake) · hh agreement: – (T02)
 runs:             –
-open_questions:   0 (Q2 resolved by D-eol: .gitattributes forces LF under policy/; this checkout was already LF,
-                  a fresh clone without it was CRLF)
-resume_point:     T01 complete under the mock. When the Token Factory key is whitelisted, in order:
-                  1. real TENURE_LLM_* in .env → `uv run tenure smoke --n 3` (S1) → re-run gates G00 and G01 live;
-                  2. `uv run tenure spike s3` then `uv run tenure spike s2`; copy the printed lines here; approve D-mode;
-                  3. `uv run tenure decide-sample --n 30` → tests/fixtures/llm/decide_sample.jsonl (commit it);
-                  4. `uv run tenure intake --all` in the background; record type distribution + agreement here.
-                  T02 can start meanwhile, but it needs case types, so it is blocked on step 4 for anything on real data.
+open_questions:   3
+                  Q3 (test edit, C4/C11): tests/unit/test_config.py lines 33 and 84 assert token_factory
+                     structured_mode == "json_schema", the pre-S3 default. RUNBOOK T01 has S3 write the measured mode to
+                     tenure.yaml, and S3 chose vllm_structured. Proposal: assert the value is in STRUCTURED_MODES
+                     (line 33) and that endpoint() passes the yaml value through (line 84). Needs approval to edit them.
+                  Q4 (S2 fail → master §24 fallback): ~20 cases/min under 30 RPM. Options: (a) live replay of a
+                     3k-case slice (~2.5 h) and pre-run the rest elsewhere; (b) move replay to the vllm_droplet profile
+                     (MI300X); (c) both: droplet for bulk, Token Factory slice as the "live AMD endpoint" demo. Decide before T03.
+                  Q5 (intake strategy, master §11): labels are frozen forever and decide the cells. Options:
+                     (a) Gemma on a bounded sample (e.g. the 3k replay slice of Q4 + gold set), keywords for the rest,
+                         source column records which; (b) keywords for all now (frozen; Gemma never labels these);
+                     (c) defer intake until the droplet profile exists, then Gemma for all. T02 needs case types.
+resume_point:     Answer Q3 → edit the two assertions → `uv run python scripts/gate.py G01` (live, ~8 min) → gate commit.
+                  Answer Q5 → run intake as decided (never `intake --all` live on Token Factory). Answer Q4 before T03.
 module_table:     | module | gate | status | commit |
-                  | T00 | G00 | green (S1 pending, mock LLM) | ca580c2 (feat) |
-                  | T01 | G01 | green (S1/S2/S3 + intake pending, mock LLM) | 3d09b72 (feat) |
+                  | T00 | G00 | green (live re-run: 45/45 pass) | ca580c2 (feat) |
+                  | T01 | G01 | green on mock (3d09b72); live re-run pending Q3 | 5e124f3 (D-rpm feat) |
