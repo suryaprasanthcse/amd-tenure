@@ -1,0 +1,8 @@
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\unit\test_ratelimit.py:9: in <module>
+    from tenure.ratelimit import RateLimitedTransport, RateLimiter, shared_limiter
+E   ModuleNotFoundError: No module named 'tenure.ratelimit'
+=========================== short test summary info ===========================
+ERROR tests/unit/test_ratelimit.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!

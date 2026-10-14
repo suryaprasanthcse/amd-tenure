@@ -37,11 +37,8 @@ class LLMEndpoint:
     base_url: str
     api_key: str
     model: str
-    transport: httpx.MockTransport | None  # None means the live endpoint
-
-    @property
-    def mock(self) -> bool:
-        return self.transport is not None
+    transport: httpx.MockTransport | httpx.AsyncBaseTransport  # the mock, or the live endpoint behind its rate limit
+    mock: bool
 
 
 def _schema_instance(schema: dict) -> object:
@@ -107,5 +104,14 @@ def llm_endpoint() -> LLMEndpoint:
     if missing:
         pytest.fail(f"llm tests need {', '.join(missing)} (set them in .env)")
     base, key, model = (os.environ[n] for n in names)
-    transport = mock_openai_transport(model, key) if key == MOCK_API_KEY else None
-    return LLMEndpoint(base, key, model, transport)
+    if key == MOCK_API_KEY:
+        return LLMEndpoint(base, key, model, mock_openai_transport(model, key), True)
+    from tenure.config import load
+    from tenure.ratelimit import RateLimitedTransport, shared_limiter
+
+    # Live: every llm test shares the profile's request-rate limit (D-rpm; Token Factory allows 30 RPM).
+    cfg = load(ROOT / "tenure.yaml")
+    rpm = cfg.inference.profiles[cfg.inference.default_profile].rpm
+    if rpm is None:
+        pytest.fail("the default inference profile needs an rpm in tenure.yaml before llm tests run live")
+    return LLMEndpoint(base, key, model, RateLimitedTransport(shared_limiter(base, rpm)), False)
