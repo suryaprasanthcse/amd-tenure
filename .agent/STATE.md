@@ -29,20 +29,30 @@ data_facts:       source: data/derived/ingest_manifest.json (config_sha cfe402a6
                   by band (edges 0/1500/4000/7500, D-band): V1 17,010 (.4035) · V2 18,270 (.4334) · V3 4,434 (.1052) · V4 2,443 (.0580)
                   split × band: train 7271/7329/1898/998 · replay 7049/8027/1858/1051 · live 2601/2835/642/376
                   delivered share: 0.9673
-                  intake: NOT STARTED, by instruction: the human ruled out sending all 42,157 messages live (30 RPM,
-                      spend cap). The live G01 intake test classified 50 replay cases (≥ 48 by Gemma) without freezing. → Q5
+                  intake: NOT STARTED. Strategy decided (D-intake): Gemma on a bounded sample, keywords for the rest.
+                      The live G01 intake test classified 50 replay cases (≥ 48 by Gemma) without freezing.
                   case types, gemma–keyword agreement: – (after intake) · hh agreement: – (T02)
 runs:             –
-open_questions:   2 (Q3 resolved by D-q3: the two config assertions accept the S3-measured mode)
-                  Q4 (S2 fail → master §24 fallback): ~20 cases/min under 30 RPM. Options: (a) live replay of a
-                     3k-case slice (~2.5 h) and pre-run the rest elsewhere; (b) move replay to the vllm_droplet profile
-                     (MI300X); (c) both: droplet for bulk, Token Factory slice as the "live AMD endpoint" demo. Decide before T03.
-                  Q5 (intake strategy, master §11): labels are frozen forever and decide the cells. Options:
-                     (a) Gemma on a bounded sample (e.g. the 3k replay slice of Q4 + gold set), keywords for the rest,
-                         source column records which; (b) keywords for all now (frozen; Gemma never labels these);
-                     (c) defer intake until the droplet profile exists, then Gemma for all. T02 needs case types.
-resume_point:     T01 complete and green live. Before T02 on real data: answer Q5 and run intake as decided
-                  (never `intake --all` live on Token Factory). Answer Q4 before T03. D-mode still awaits approval.
+open_questions:   2 (Q3 resolved by D-q3; Q5 strategy decided by D-intake)
+                  Q4 (S2 fail → master §24 fallback): ~20 cases/min under 30 RPM. D-intake proposes the 3k hash slice
+                     as option (a)'s live replay slice. Still open: pre-run the rest on the droplet, or replay only the slice.
+                  Q6 (D-intake definitions, blocks the intake run): approve (1) slice = 3,000 replay cases by
+                     unit_hash("20261018","slice",case_id) and (2) gold pool = 1,500 live cases by
+                     unit_hash("20261018","goldpool",case_id), from which T02 draws the 300 gold cases (amends §15).
+intake_plan:      (D-intake; runs only after Q6 is approved; never `intake --all` live on Token Factory)
+                  1. Code (T01 scope, tests first): intake.py `hash_sample(cases, split, tag, n, seed)`; CLI
+                     `tenure intake --subset slice|gold-pool` (Gemma on that subset only) and `tenure intake --keywords-rest`
+                     (keyword labels for every unlabelled case, no network). --keywords-rest refuses while either
+                     subset has unlabelled cases, so keyword labels can never be frozen onto a Gemma case.
+                  2. Live, one process at a time (shared 30 RPM): `--subset gold-pool` (1,500 calls) first, since T02
+                     needs it; then `--subset slice` (3,000 calls). 4,500 calls ≥ 2.5 h at the 30 RPM ceiling, ~3 h with
+                     the 429 retries S2 saw. Batches of 500 persist as they finish, so the run can stop at the daily
+                     spend cap and resume the next day. Intake prompts are short (~250 tokens + message, median 54
+                     chars), far below the ~2.9k-token decision prompt.
+                  3. `--keywords-rest` for the other 37,657 cases (local, seconds).
+                  4. Record here: case-type distribution by source, Gemma–keyword agreement per type on the 4,500
+                     (keyword_agreement), and any Gemma calls that fell back to keywords.
+resume_point:     Q6 approval → intake_plan steps 1–4 → T02. Answer Q4 before T03. D-mode still awaits approval.
 module_table:     | module | gate | status | commit |
                   | T00 | G00 | green (live re-run: 45/45 pass) | ca580c2 (feat) |
-                  | T01 | G01 | green live (5e20f29); intake pending Q5 | 3d09b72, 5e124f3 (feat) |
+                  | T01 | G01 | green live (5e20f29); intake pending Q6 | 3d09b72, 5e124f3 (feat) |
