@@ -29,9 +29,21 @@ data_facts:       source: data/derived/ingest_manifest.json (config_sha cfe402a6
                   by band (edges 0/1500/4000/7500, D-band): V1 17,010 (.4035) · V2 18,270 (.4334) · V3 4,434 (.1052) · V4 2,443 (.0580)
                   split × band: train 7271/7329/1898/998 · replay 7049/8027/1858/1051 · live 2601/2835/642/376
                   delivered share: 0.9673
-                  intake: NOT STARTED. Strategy decided (D-intake): Gemma on a bounded sample, keywords for the rest.
-                      The live G01 intake test classified 50 replay cases (≥ 48 by Gemma) without freezing.
-                  case types, gemma–keyword agreement: – (after intake) · hh agreement: – (T02)
+                  intake: COMPLETE (2026-10-15, D-intake) → data/derived/intake.parquet, merged into cases.parquet
+                      42,157 labelled, 0 empty · source gemma 4,496 · keywords 37,661 (37,657 keyword fill + 4 Gemma
+                      calls that fell back) · Gemma subsets: gold-pool 1,500 (live; 1,499 gemma) + slice 3,000 (replay)
+                      live run: gold-pool 01:21–02:38, slice 02:38–05:18 (IST), 4,500 calls at 30 RPM, no endpoint errors
+                      case types (excl. 222 excluded): POSITIVE 24,755 · VAGUE_COMPLAINT 4,178 · NOT_RECEIVED 3,213 ·
+                      QUALITY 2,602 · OTHER 2,162 · DELAY 1,139 · MISSING_ITEM 831 · BILLING 690 · DEFECTIVE 572 ·
+                      DAMAGED 561 · WRONG_ITEM 518 · REMORSE 478 · WRONG_VARIANT 169 · SELLER_SERVICE 67
+                      gemma–keyword agreement on the Gemma-labelled cases: 3130/4496 = 0.696 overall; per Gemma type:
+                      POSITIVE 2405/2783 · NOT_RECEIVED 272/429 · DELAY 96/137 · VAGUE_COMPLAINT 37/65 · DAMAGED 45/82 ·
+                      DEFECTIVE 45/91 · BILLING 24/59 · QUALITY 60/181 · WRONG_ITEM 44/150 · MISSING_ITEM 77/294 ·
+                      WRONG_VARIANT 15/90 · OTHER 6/68 · REMORSE 4/33 · SELLER_SERVICE 0/34
+                      CAVEAT (sanity metric, not gated): the keyword rules miss much of what Gemma finds in the minority
+                      types, so keyword-labelled cells (all of train, most of replay) will hold fewer of those types than
+                      the Gemma-labelled slice. T04 should report results by intake source.
+                  hh agreement: see T02
 runs:             –
 open_questions:   2 (Q3 resolved by D-q3; Q5 strategy decided by D-intake)
                   Q4 (S2 fail → master §24 fallback): ~20 cases/min under 30 RPM. D-intake proposes the 3k hash slice
