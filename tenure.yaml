@@ -30,9 +30,9 @@ inference:
       base_url_env: TENURE_LLM_BASE_URL
       api_key_env: TENURE_LLM_API_KEY
       model_env: TENURE_LLM_MODEL
-      structured_mode: json_schema   # set by S3
-      system_mode: system            # set by S3
-      concurrency: 64                # set by S2
+      structured_mode: vllm_structured   # set by S3
+      system_mode: fold            # set by S3
+      concurrency: 4                # set by S2
       rpm: 30                        # D-rpm: shared Token Factory limit, 30 requests/min
     vllm_droplet:
       base_url_env: TENURE_VLLM_BASE_URL

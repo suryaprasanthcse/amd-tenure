@@ -1,0 +1,5 @@
+G00 tests re-run live on 2026-10-15 (host developer.amd.com.cn, Gemma-4-31B-IT, 30 RPM limiter):
+45 tests, 0 failures, 0 errors, 0 skipped
+testcase classname="tests.integration.test_llm_live" name="test_models_endpoint_lists_configured_model" time="0.997"
+testcase classname="tests.integration.test_llm_live" name="test_one_completion_nonempty" time="2.892"
+gate.py G00 itself reports red only on coverage of T01 modules (intake/policy/prompt/schema), which G00 markers do not exercise; gates/G00.json kept at its original green record. The cumulative G01 gate re-runs these tests.

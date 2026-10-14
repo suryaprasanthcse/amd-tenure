@@ -1,10 +1,11 @@
 # STATE
 current_module:   T01   status: green (G01, feat 3d09b72)
 last_green_gate:  G01 (gates/G01.json; 171 tests, 0 skipped; llm tests ran against the D-llm-mock endpoint)
-platform_facts:   S1: PENDING → mock key in .env (D-llm-mock). Not verified against AMD Token Factory.
-                      To verify: put real TENURE_LLM_* in .env, run `uv run tenure smoke --n 3`
-                      (or scripts/spikes/s1_models.py), then re-run `uv run python scripts/gate.py G00`.
-                      S1 FAIL → open question "use droplet profile?" (master §24).
+platform_facts:   S1: PASS (2026-10-15) → host=developer.amd.com.cn, model=Gemma-4-31B-IT, models_status=200,
+                      listed=True, gemma=True, completions=3/3, rate_limit_headers: none reported
+                      (`uv run tenure smoke --n 3`; .env now holds the live TENURE_LLM_* values, D-llm-mock retired)
+                      Live re-runs of G00/G01 not done yet: the session's permission classifier blocked further
+                      traffic to this host pending the human's confirmation.
                   S2: PENDING (needs S1). Run `uv run tenure spike s2` → var/spikes/S2.json, writes concurrency to tenure.yaml.
                   S3: PENDING (needs S1). Run `uv run tenure spike s3` → var/spikes/S3.json, writes structured_mode and
                       system_mode to tenure.yaml. Until then tenure.yaml keeps json_schema/system (D-mode proposed).

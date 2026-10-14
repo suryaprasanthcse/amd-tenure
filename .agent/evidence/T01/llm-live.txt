@@ -1,0 +1,12 @@
+platform win32 -- Python 3.12.14, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\myspace\hacckathons\amd-tenure
+configfile: pyproject.toml
+testpaths: tests
+plugins: anyio-4.15.1, hypothesis-6.169.1, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 178 items / 174 deselected / 4 selected
+
+tests\integration\test_decide_live.py ..                                 [ 50%]
+tests\integration\test_llm_live.py ..                                    [100%]
+
+================ 4 passed, 174 deselected in 483.00s (0:08:03) ================
