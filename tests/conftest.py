@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from hypothesis import settings
 
 ROOT = Path(__file__).resolve().parents[1]
 MOCK_API_KEY = "mock_key"  # decision D-llm-mock: this key routes llm tests to the in-process mock endpoint
+MOCK_ROUND_TRIP_S = 0.005  # D-offline-gates: a simulated round trip, so measured latency is non-zero
 
 settings.register_profile("ci", max_examples=200, derandomize=True, deadline=2000)
 settings.load_profile("ci")
@@ -83,6 +85,7 @@ def mock_openai_transport(model: str, api_key: str) -> httpx.MockTransport:
         if req.method == "GET" and req.url.path.endswith("/models"):
             return httpx.Response(200, json={"object": "list", "data": [{"id": model, "object": "model"}]})
         if req.method == "POST" and req.url.path.endswith("/chat/completions"):
+            time.sleep(MOCK_ROUND_TRIP_S)
             body = json.loads(req.content)
             if body.get("model") != model:
                 return httpx.Response(404, json={"error": {"message": "unknown model"}})
