@@ -1,5 +1,5 @@
 # STATE
-current_module:   T03   status: IN PROGRESS (test 0c17ad3, feat 7baaa54; non-live green; D-rpm2 applied) → PAUSED (human, 2026-10-15T02:3xZ, offline)
+current_module:   T03   status: K2 APPLIED, replay frozen at 500 (R-20261015-01); gate G03 NOT RUN → Q8
 last_green_gate:  G02 (gates/G02.json, commit 981aa19; 200 tests, 0 failures, 0 skipped, 651 s, cumulative G00–G02,
                   llm tests live on Token Factory behind the 30 RPM limiter; humans 100%, gold 99.2% coverage)
                   G01: gates/G01.json, commit b85cf6a, 184 tests live after the D-intake run.
@@ -58,8 +58,19 @@ data_facts:       source: data/derived/ingest_manifest.json (config_sha cfe402a6
                       WRONG_VARIANT 22 (pool shortfalls in SELLER_SERVICE/REMORSE/DELAY redistributed by size, §15)
                       labels: none yet → HUMAN TASK 17 Oct 15:30–18:00: `uv run tenure gold label --labeler <name>`
                       (English translations come from Gemma once per case, cached, through the 30 RPM limiter)
-runs:             –
-open_questions:   0 (Q7 → D-rpm2 · Q3 → D-q3 · Q4 → D-replay · Q5 → D-intake · Q6 approved with D-intake)
+runs:             R-20261015-01 (live, Token Factory, Gemma-4-31B-IT, run_key 3e10bf3e14f30d7e9409bb57) · K2 applied
+                      (D-k2): FROZEN at the first 500 cases of the D-replay slice in case order, contact dates
+                      2018-01-01 … 2018-02-03 (decisions.jsonl, 500 records; manifest has no "finished": run killed)
+                  figures (events.jsonl progress at committed=500, attempt 2 started 2026-10-15T04:22:34Z; 10 of the
+                      500 came from the outcome cache, 490 were endpoint calls):
+                      wall 3,260.5 s (54.3 min) · 9.20 cases/min · compression 821× (33 days in 54.3 min)
+                      cached_ratio 0.9312 · prompt 431 tok/s · completion 11.2 tok/s · p50/p95 74,698 / 220,812 ms
+                      valid 483/500 = 0.966 · overall agreement 466/500 = 0.932
+                      endpoint errors 17/500 = 3.4%: TRANSPORT 10 · HTTP_429 5 · TIMEOUT 1 · HTTP_500 1 (all after
+                      7 attempts; counted invalid and as disagreements, I5; not cached, I7)
+                      attempts of the 483 stored completions: 1:294 · 2:101 · 3:34 · 4:26 · 5:12 · 6:11 · 7:5
+                      var/outcomes.db holds 602 completions for this run_key (102 beyond case 500, uncommitted)
+open_questions:   1 (Q7 → D-rpm2 · Q3 → D-q3 · Q4 → D-replay · Q5 → D-intake · Q6 approved with D-intake)
                   Q7 (T03, 2026-10-15): the Token Factory now returns rate-limit headers that contradict D-rpm:
                       x-ratelimit-limit-user-rpm 20 (limiter sends 30) and x-ratelimit-limit-user-daily-usd 1
                       (used 0.029; a mostly-cached decider call costs ~1.2e-5 USD, so 3,000 cases ≈ 0.04 USD).
@@ -67,15 +78,14 @@ open_questions:   0 (Q7 → D-rpm2 · Q3 → D-q3 · Q4 → D-replay · Q5 → D
                       so timeout_s 60 times out; the 3-case CLI smoke (var/runs/T03-cli-smoke) needed 6–7 attempts
                       per call. Proposed: rpm 20, timeout_s 180, token_factory concurrency 16 (≈ 20 RPM × 45 s / 60).
                       RESOLVED → D-rpm2 (rpm 20, timeout_s 180, concurrency 16; two assertions follow the yaml).
-resume_point:     T03 PAUSED by the human (offline commute). Replay R-20261015-01 (3k D-replay slice, run_key
-                  3e10bf3e14f30d7e9409bb57) was stopped before its first tick: var/runs/R-20261015-01/ has manifest.json
-                  and events.jsonl but no decisions.jsonl, so it restarts at case 1 of 3,000; the 10 completions already
-                  in var/outcomes.db (WAL checkpointed) come back from the cache without endpoint calls. No process left.
-                  RESUME (one live process at a time, D-rpm2), from the repo root:
-                    uv run tenure replay --split replay --profile token_factory --record var/runs/R-20261015-01
-                  Same --record = same run_id: the manifest attempts list grows and events.jsonl t_ms continues.
-                  Then: uv run python scripts/gate.py G03 (includes live test_replay_500_live, ~25–30 min at 20 RPM);
-                  STATE run facts from var/runs/R-20261015-01/manifest.json "finished"; DEVLOG; commit "gate(G03): green".
+                  Q8 (T03, 2026-10-15): gate G03 includes tests/integration/test_replay_500_live.py (llm), which runs
+                      500 fresh live calls and asserts endpoint_calls == 500 and error_rate < 1%. The frozen run has
+                      3.4% endpoint errors, and the human asked that no further live calls be made. Freezing the
+                      500 as that test's evidence needs a test change (C4) and still fails its < 1% bound. Not run,
+                      not edited; gate(G03) not committed. Needs the human.
+resume_point:     T03 after Q8. Code, offline tests and K2 records are committed. Offline T03 tests use only the
+                  FakeLLM MockTransport (verified with TENURE_LLM_BASE_URL pointed at a dead port: 18 pass).
+                  Gate: `uv run python scripts/gate.py G03` runs every llm test live (G00/G01 + test_replay_500_live).
 module_table:     | module | gate | status | commit |
                   | T00 | G00 | green (live re-run: 45/45 pass) | ca580c2 (feat) |
                   | T01 | G01 | green live after intake (b85cf6a) | 3d09b72, 5e124f3, e7c5396, b85cf6a (feat) |
