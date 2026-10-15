@@ -1,0 +1,25 @@
+___________ ERROR collecting tests/integration/test_ledger_runs.py ____________
+ImportError while importing test module 'C:\myspace\hacckathons\amd-tenure\tests\integration\test_ledger_runs.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Users\surya\.local\share\uv\python\cpython-3.12-windows-x86_64-none\Lib\importlib\__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\integration\test_ledger_runs.py:12: in <module>
+    from tenure.ledger import Ledger
+E   ModuleNotFoundError: No module named 'tenure.ledger'
+_________________ ERROR collecting tests/unit/test_ledger.py __________________
+ImportError while importing test module 'C:\myspace\hacckathons\amd-tenure\tests\unit\test_ledger.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Users\surya\.local\share\uv\python\cpython-3.12-windows-x86_64-none\Lib\importlib\__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\unit\test_ledger.py:11: in <module>
+    from tenure.governance import read_jsonl, verify_jsonl
+E   ModuleNotFoundError: No module named 'tenure.governance'
+=========================== short test summary info ===========================
+ERROR tests/integration/test_governance.py
+ERROR tests/integration/test_ledger_runs.py
+ERROR tests/unit/test_ledger.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 3 errors during collection !!!!!!!!!!!!!!!!!!!
