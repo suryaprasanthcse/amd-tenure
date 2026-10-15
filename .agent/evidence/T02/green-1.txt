@@ -1,0 +1,17 @@
+PASSED tests/unit/test_humans.py::test_humans_deterministic_and_order_independent
+PASSED tests/unit/test_humans.py::test_human_agreement_is_realistic
+PASSED tests/unit/test_humans.py::test_schedule_switches_on_date
+PASSED tests/unit/test_humans.py::test_drift_schedule_changes_only_p1_decisions_after_the_drift_date
+PASSED tests/unit/test_humans.py::test_secondary_is_a_different_person_and_share_is_15pct
+PASSED tests/unit/test_humans.py::test_humans_table_columns_and_content
+PASSED tests/unit/test_gold.py::test_quotas_even_split_when_every_type_is_large
+PASSED tests/unit/test_gold.py::test_quotas_redistribute_shortfall_by_size
+PASSED tests/unit/test_gold.py::test_gold_sampling
+PASSED tests/unit/test_gold.py::test_gold_cases_are_excluded_from_the_live_stream
+PASSED tests/unit/test_gold.py::test_gold_label_cli_roundtrip
+PASSED tests/unit/test_gold.py::test_label_session_rejects_bad_input_and_reasks
+PASSED tests/unit/test_gold.py::test_translation_cache_calls_once_per_case
+PASSED tests/unit/test_gold.py::test_raw_agreement_overall_and_by_type
+PASSED tests/unit/test_gold.py::test_gold_sampling_rejects_duplicate_ids
+PASSED tests/integration/test_humans_real.py::test_real_team_calibration
+16 passed in 5.15s

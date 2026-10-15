@@ -1,4 +1,4 @@
-"""TENURE command line: doctor, ingest, smoke (T00); intake, decide-sample, spike s2|s3 (T01)."""
+"""TENURE command line: doctor, ingest, smoke (T00); intake, decide-sample, spike s2|s3 (T01); humans, gold (T02)."""
 from __future__ import annotations
 
 import asyncio
@@ -11,7 +11,7 @@ import statistics
 import sys
 import time
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -24,7 +24,9 @@ from rich.table import Table
 
 from .canonical import fx
 from .config import TenureConfig, config_sha, endpoint, ingest_config, load, load_dotenv
-from .domain import Case, CaseType
+from .domain import Action, Case, CaseType, Resolution
+from .gold import TranslationCache, label_session, raw_agreement, read_labels, sample_gold
+from .humans import PolicySchedule, label_case
 from .intake import (
     case_from_record,
     classify_keywords,
@@ -41,6 +43,7 @@ from .intake import (
 )
 from .llm import STRUCTURED_MODES, Completion, EndpointProfile, LLMClient
 from .olist import build_cases, load_tables
+from .policy import POLICY_V1, POLICY_V2
 from .prompt import case_block, messages, prompt_sha, static_block
 from .ratelimit import RateLimitedTransport, shared_limiter
 from .schema import DECISION_SCHEMA, Parsed, parse_decision
@@ -491,3 +494,128 @@ def spike(name: str = typer.Argument(..., help="s2 or s3"), n: int = typer.Optio
                       f"record {path.relative_to(root)}")
     if not r["pass"]:
         raise typer.Exit(1)
+
+
+# --- T02: synthetic team and gold-set harness -----------------------------------------------------------------
+
+HUMANS_COLUMNS: tuple[str, ...] = (
+    "case_id", "primary_hid", "primary_action", "primary_amount_cents", "primary_requires_return", "primary_clause",
+    "secondary_hid", "secondary_action", "secondary_amount_cents", "secondary_requires_return", "secondary_clause",
+)
+TRANSLATE_PROMPT = ("Translate this customer message about an online order from Brazilian Portuguese into English. "
+                    "Reply with the translation only.")
+
+
+def humans_table(cases: pd.DataFrame, schedule: PolicySchedule, seed: int, double_rate: float = 0.15) -> pd.DataFrame:
+    """Team decisions per case (master §14.3 columns), in case_id order; secondary_* null when not double-coded."""
+    if (cases["case_type"] == "").any() or cases["case_type"].isna().any():
+        raise ValueError("every case needs an intake case_type before the team can decide it")
+    rows = []
+    for rec in cases.sort_values("case_id", kind="stable").to_dict("records"):
+        lab = label_case(case_from_record(rec), schedule, seed, double_rate=double_rate)
+        s = lab.secondary
+        rows.append((lab.case_id, lab.primary_hid, lab.primary.action.value, lab.primary.amount_cents,
+                     lab.primary.requires_return, lab.primary.clause, lab.secondary_hid,
+                     None if s is None else s.action.value, None if s is None else s.amount_cents,
+                     None if s is None else s.requires_return, None if s is None else s.clause))
+    df = pd.DataFrame(rows, columns=list(HUMANS_COLUMNS))
+    for col in ("primary_amount_cents", "secondary_amount_cents"):
+        df[col] = df[col].astype("Int64")
+    df["secondary_requires_return"] = df["secondary_requires_return"].astype("boolean")
+    return df
+
+
+def _typed_cases(root: Path, cfg: TenureConfig) -> pd.DataFrame:
+    derived = root / cfg.paths.derived
+    cases = pd.read_parquet(derived / "cases.parquet")
+    if (derived / "intake.parquet").exists():
+        cases = merge_into_cases(cases, pd.read_parquet(derived / "intake.parquet"))
+    return cases
+
+
+@app.command()
+def humans(config: Path = ConfigOpt) -> None:
+    """Synthetic team decisions → humans.parquet (all splits, Policy v1) and humans_drift.parquet (live, D-POLICY)."""
+    root, cfg = _setup(config)
+    derived = root / cfg.paths.derived
+    cases = _typed_cases(root, cfg)
+    cases = cases[cases["split"] != "excluded"]
+    rate = cfg.synthetic.double_rate
+    base = humans_table(cases, PolicySchedule(), cfg.seed, rate)
+    base.to_parquet(derived / "humans.parquet", index=False)
+    drift = PolicySchedule(((date.min, POLICY_V1), (cfg.policy.drift_date, POLICY_V2)))
+    live = humans_table(cases[cases["split"] == "live"], drift, cfg.seed, rate)
+    live.to_parquet(derived / "humans_drift.parquet", index=False)
+    doubled = base["secondary_hid"].notna()
+    console.print(f"humans.parquet {len(base)} cases, double-coded {doubled.mean():.4f}; "
+                  f"humans_drift.parquet {len(live)} live cases (v2 from {cfg.policy.drift_date})")
+
+
+gold_app = typer.Typer(no_args_is_help=True, help="Gold set: sample, label, eval (master §15).")
+app.add_typer(gold_app, name="gold")
+
+
+def _gold_dir(root: Path, cfg: TenureConfig) -> Path:
+    return root / cfg.paths.gold
+
+
+@gold_app.command("sample")
+def gold_sample(config: Path = ConfigOpt) -> None:
+    """Draw the 300 gold cases from the D-intake gold pool, stratified by case type."""
+    root, cfg = _setup(config)
+    cases = _typed_cases(root, cfg)
+    pool = subset_cases(cases, "gold-pool", cfg.seed)
+    gold = sample_gold(pool, cfg.seed)
+    out = _gold_dir(root, cfg)
+    out.mkdir(parents=True, exist_ok=True)
+    gold.to_parquet(out / "gold_cases.parquet", index=False)
+    console.print(f"{len(gold)} gold cases → {out / 'gold_cases.parquet'}")
+    console.print(f"by type {dict(gold['case_type'].value_counts().sort_index())}")
+
+
+@gold_app.command("label")
+def gold_label(labeler: str = typer.Option(..., "--labeler", help="Your name, stored with each label"),
+               config: Path = ConfigOpt) -> None:
+    """Label the gold cases (resumable): case file, Portuguese message, cached English translation."""
+    root, cfg = _setup(config)
+    gdir = _gold_dir(root, cfg)
+    rows = pd.read_parquet(gdir / "gold_cases.parquet").to_dict("records")
+    prof, key = _live_endpoint(cfg, "gold label")
+    system_mode = _profile_cfg(cfg).system_mode
+
+    def translate(text: str) -> str:
+        async def go() -> Completion:
+            client = LLMClient(prof, key, transport=limited_transport(cfg, prof))  # one per call: one event loop each
+            try:
+                return await client.complete(messages(TRANSLATE_PROMPT, text, system_mode))  # unconstrained text
+            finally:
+                await client.aclose()
+
+        comp = asyncio.run(go())
+        return comp.text.strip() if comp.text else f"(translation unavailable: {comp.error})"
+
+    cache = TranslationCache(gdir / "translations.jsonl", translate)
+    n = label_session(rows, gdir / "gold_labels.jsonl", labeler, input, console.print, cache, utc_now)
+    console.print(f"{n} labelled this session; {len(read_labels(gdir / 'gold_labels.jsonl'))}/{len(rows)} in total")
+
+
+@gold_app.command("eval")
+def gold_eval(config: Path = ConfigOpt) -> None:
+    """Raw agreement with the gold labels: synthetic primary decisions (T04 adds Wilson-cc intervals)."""
+    root, cfg = _setup(config)
+    gdir = _gold_dir(root, cfg)
+    gold_cases = pd.read_parquet(gdir / "gold_cases.parquet")
+    labels = {r["case_id"]: Resolution(Action(r["action"]), r["amount_cents"], False, "")
+              for r in read_labels(gdir / "gold_labels.jsonl")}
+    hum = pd.read_parquet(root / cfg.paths.derived / "humans.parquet")
+    hum = hum[hum["case_id"].isin(labels)]
+    primary = {r["case_id"]: Resolution(Action(r["primary_action"]),
+                                        None if pd.isna(r["primary_amount_cents"]) else int(r["primary_amount_cents"]),
+                                        bool(r["primary_requires_return"]), r["primary_clause"])
+               for r in hum.to_dict("records")}
+    types = dict(zip(gold_cases["case_id"], gold_cases["case_type"]))
+    r = raw_agreement(labels, primary, types)
+    hit, n = r["overall"]
+    console.print(f"synthetic primary vs gold: {hit}/{n}" + (f" = {hit / n:.3f}" if n else ""))
+    for t, (h, m) in r["by_type"].items():
+        console.print(f"  {t}: {h}/{m}")

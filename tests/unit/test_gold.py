@@ -6,8 +6,17 @@ import pandas as pd
 import pytest
 
 from tenure.domain import Action, CaseType, Resolution
-from tenure.gold import (GOLD_N, LABEL_FIELDS, TranslationCache, gold_quotas, label_session, live_stream,
-                         raw_agreement, read_labels, sample_gold)
+from tenure.gold import (
+    GOLD_N,
+    LABEL_FIELDS,
+    TranslationCache,
+    gold_quotas,
+    label_session,
+    live_stream,
+    raw_agreement,
+    read_labels,
+    sample_gold,
+)
 
 pytestmark = [pytest.mark.unit, pytest.mark.gate_g02]
 
