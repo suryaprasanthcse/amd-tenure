@@ -1,0 +1,7 @@
+E   ImportError: cannot import name 'HUMANS_COLUMNS' from 'tenure.cli' (C:\myspace\hacckathons\amd-tenure\src\tenure\cli.py)
+E   ModuleNotFoundError: No module named 'tenure.gold'
+E   ModuleNotFoundError: No module named 'tenure.humans'
+ERROR tests/unit/test_humans.py
+ERROR tests/unit/test_gold.py
+ERROR tests/integration/test_humans_real.py
+3 errors in 0.89s
