@@ -1,5 +1,5 @@
 # STATE
-current_module:   T02   status: COMPLETE (G02 green live, 981aa19) → next T03
+current_module:   T03   status: IN PROGRESS (test 0c17ad3, feat 7baaa54; non-live green; D-rpm2 applied) → live steps
 last_green_gate:  G02 (gates/G02.json, commit 981aa19; 200 tests, 0 failures, 0 skipped, 651 s, cumulative G00–G02,
                   llm tests live on Token Factory behind the 30 RPM limiter; humans 100%, gold 99.2% coverage)
                   G01: gates/G01.json, commit b85cf6a, 184 tests live after the D-intake run.
@@ -59,8 +59,18 @@ data_facts:       source: data/derived/ingest_manifest.json (config_sha cfe402a6
                       labels: none yet → HUMAN TASK 17 Oct 15:30–18:00: `uv run tenure gold label --labeler <name>`
                       (English translations come from Gemma once per case, cached, through the 30 RPM limiter)
 runs:             –
-open_questions:   0 (Q3 → D-q3 · Q4 → D-replay · Q5 → D-intake · Q6 approved with D-intake)
-resume_point:     T03 (replay engine) in a fresh session. Replay = the D-intake replay slice, 3,000 cases, live on
+open_questions:   0 (Q7 → D-rpm2 · Q3 → D-q3 · Q4 → D-replay · Q5 → D-intake · Q6 approved with D-intake)
+                  Q7 (T03, 2026-10-15): the Token Factory now returns rate-limit headers that contradict D-rpm:
+                      x-ratelimit-limit-user-rpm 20 (limiter sends 30) and x-ratelimit-limit-user-daily-usd 1
+                      (used 0.029; a mostly-cached decider call costs ~1.2e-5 USD, so 3,000 cases ≈ 0.04 USD).
+                      Decider latency measured now: 26.3 / 32.3 / 100.1 s for three slice cases (S2: p50 2.6 s),
+                      so timeout_s 60 times out; the 3-case CLI smoke (var/runs/T03-cli-smoke) needed 6–7 attempts
+                      per call. Proposed: rpm 20, timeout_s 180, token_factory concurrency 16 (≈ 20 RPM × 45 s / 60).
+                      RESOLVED → D-rpm2 (rpm 20, timeout_s 180, concurrency 16; two assertions follow the yaml).
+resume_point:     T03: code and non-live tests green (7baaa54). Remaining: Q7 decision → tenure.yaml; live
+                  test_replay_500_live; `tenure replay --split replay --profile token_factory --record var/runs/<id>`
+                  on the 3k slice; gate G03; STATE run facts; DEVLOG; "gate(G03): green".
+                  Earlier note: T03 (replay engine) in a fresh session. Replay = the D-intake replay slice, 3,000 cases, live on
                   Token Factory (D-replay, ~2.5 h at 30 RPM; one live process at a time, D-rpm). Decider mode
                   vllm_structured/fold (D-mode, decided). Human task: gold labelling on 17 Oct.
 module_table:     | module | gate | status | commit |

@@ -32,8 +32,8 @@ inference:
       model_env: TENURE_LLM_MODEL
       structured_mode: vllm_structured   # set by S3
       system_mode: fold            # set by S3
-      concurrency: 4                # set by S2
-      rpm: 30                        # D-rpm: shared Token Factory limit, 30 requests/min
+      concurrency: 16               # D-rpm2: ≈ 20 RPM × 45 s latency / 60 (S2 had set 4)
+      rpm: 20                        # D-rpm2: endpoint reports x-ratelimit-limit-user-rpm 20 (was 30, D-rpm)
     vllm_droplet:
       base_url_env: TENURE_VLLM_BASE_URL
       api_key_env: TENURE_VLLM_API_KEY
@@ -42,7 +42,7 @@ inference:
       system_mode: system
       concurrency: 128
   decoding: {temperature: 0, top_p: 1, seed: 0, max_tokens: 256}
-  timeout_s: 60
+  timeout_s: 180                 # D-rpm2: decider calls measured at 26–100 s on 2026-10-15
   max_retries: 6
 agreement: {tol_abs_cents: 50, tol_rel_bp: 1000}
 ladder:

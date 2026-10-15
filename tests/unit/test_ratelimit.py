@@ -81,5 +81,5 @@ def test_sync_transport_waits_its_slot():
 
 def test_token_factory_profile_declares_30_rpm():
     cfg = load(ROOT / "tenure.yaml")
-    assert cfg.inference.profiles["token_factory"].rpm == 30
+    assert cfg.inference.profiles["token_factory"].rpm == 20  # D-rpm2: the endpoint reports 20 (name kept, C4)
     assert cfg.inference.profiles["vllm_droplet"].rpm is None  # self-hosted: no shared limit

@@ -86,7 +86,7 @@ def test_endpoint_reads_env_names_only():
     assert (prof.name, prof.base_url, prof.model, key) == ("token_factory", "http://h/v1", "gemma-x", "k")
     assert prof.structured_mode == cfg.inference.profiles["token_factory"].structured_mode  # yaml passes through
     assert prof.max_tokens == 256 and prof.seed == 0
-    assert prof.timeout_s == 60 and prof.max_retries == 6
+    assert prof.timeout_s == cfg.inference.timeout_s and prof.max_retries == 6  # yaml passes through (D-rpm2)
     with pytest.raises(ValueError) as e:
         endpoint(cfg, env={"TENURE_LLM_API_KEY": "secret-value"})
     assert "TENURE_LLM_BASE_URL" in str(e.value) and "secret-value" not in str(e.value)
