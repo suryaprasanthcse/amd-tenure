@@ -1,5 +1,6 @@
 """TENURE command line: doctor, ingest, smoke (T00); intake, decide-sample, spike s2|s3 (T01); humans, gold (T02);
-replay (T03); evaluate (T04); ladder sensitivity, live (T05)."""
+replay (T03); evaluate (T04); ladder sensitivity, live (T05); ledger verify|export|import-run, gold import-ledger
+(T06)."""
 from __future__ import annotations
 
 import os
@@ -695,12 +696,16 @@ def replay(split: str = typer.Option("replay", "--split"),
 
     bus.add_sink(show)
     gpu = GpuPoller(bus) if name == "vllm_droplet" else None
+    led, _ = _ledger(root, cfg)
     run = ReplayRun(cfg, name, split, adapter or None, root=root, cases=cases, humans=humans,
                     store=OutcomeStore(outcomes), run_dir=run_dir, transport=limited_transport(cfg, prof), bus=bus,
-                    gpu=gpu, selection=selection)
+                    gpu=gpu, selection=selection, ledger=led)
     console.print(f"replay {run.run_id}: {total} cases ({selection.get('subset') or split}), run_key {run.run_key}, "
                   f"concurrency {run.concurrency}, rpm {cfg.inference.profiles[name].rpm}")
-    summary = asyncio.run(run.run())
+    try:
+        summary = asyncio.run(run.run())
+    finally:
+        led.close()
     m = summary["metrics"]
     console.print(f"{run.run_id}: committed {summary['committed']} (resumed from {summary['resumed_from']}), "
                   f"wall {m['wall_s']} s, {m['cases_per_min']} cases/min, compression {m['compression']}, "
@@ -938,6 +943,7 @@ def live(from_run: str = typer.Option(..., "--from-run", help="Replay run whose 
                                    help="mock (policy oracle with 2% errors; offline) or cache (cached completions)"),
          policy_update: str = typer.Option("", "--policy-update", help="Date the operator moves the agent to v2"),
          record: Path | None = typer.Option(None, "--record", help="Output directory (default var/runs/L-…)"),
+         ledger: bool = typer.Option(False, "--ledger/--no-ledger", help="Persist ladder events to the ledger"),
          config: Path = ConfigOpt) -> None:
     """Go-live simulation over the live split (master §17) from a replay run's ladder; makes no endpoint call."""
     from .events import EventBus, Recorder
@@ -994,13 +1000,16 @@ def live(from_run: str = typer.Option(..., "--from-run", help="Replay run whose 
     bus = EventBus()
     recorder = Recorder(out / "events.jsonl")
     bus.add_sink(recorder)
+    led = _ledger(root, cfg)[0] if ledger else None
     try:
         run = LiveRun(cfg, cases=cases, humans=humans, agent=decide, ladder=ladder, drift=scenario,
-                      policy_update=update, run_dir=out, bus=bus, run_id=out.name)
+                      policy_update=update, run_dir=out, bus=bus, run_id=out.name, ledger=led)
         summary = run.run()
     finally:
         bus.remove_sink(recorder)
         recorder.close()
+        if led is not None:
+            led.close()
     summary.update(seed_run=from_run, agent=agent_label, humans=humans_file, drift_scenario=manifest["drift"])
     _write_json(out / "summary.json", summary)
     console.print(f"{out.name}: {summary['cases']} live cases over {summary['days']} days · agent {agent_label} · "
@@ -1013,3 +1022,107 @@ def live(from_run: str = typer.Option(..., "--from-run", help="Replay run whose 
         console.print(f"  demoted {d['cell']} {d['from']}->{d['to']} on {d['date']} after "
                       f"{d['outcomes_monitored']} monitored outcomes")
     console.print(f"record: {out}")
+
+
+# --- T06: governance ledger ----------------------------------------------------------------------------------------
+
+ledger_app = typer.Typer(no_args_is_help=True, help="Hash-chained governance ledger: verify, export (master §19).")
+app.add_typer(ledger_app, name="ledger")
+
+
+def _ledger(root: Path, cfg: TenureConfig):
+    from .ledger import Ledger
+
+    path = root / cfg.paths.ledger_db
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return Ledger(path), path
+
+
+@ledger_app.command("verify")
+def ledger_verify(config: Path = ConfigOpt) -> None:
+    """Check the whole chain offline: gapless seq, prev_hash, payload digest, canonical payload, hash, head."""
+    from .governance import verification_line
+
+    root, cfg = _setup(config)
+    led, path = _ledger(root, cfg)
+    try:
+        rep = led.verify()
+    finally:
+        led.close()
+    typer.echo(f"ledger {path}: {verification_line(rep)}")
+    if not rep.ok:
+        raise typer.Exit(1)
+
+
+@ledger_app.command("export")
+def ledger_export(out: Path = typer.Option(..., "--out", help="Directory, e.g. exports/<run>/"),
+                  run: str = typer.Option("", "--run", help="Replay run whose final ladder state the report lists"),
+                  config: Path = ConfigOpt) -> None:
+    """ledger.jsonl, head.json and governance_report.md; a verified export is itself recorded (EXPORT)."""
+    from .governance import export, verification_line
+    from .runs import build_ladder, cell_summary, ladder_inputs, primary_resolutions, rebuild_ladder
+
+    root, cfg = _setup(config)
+    led, _ = _ledger(root, cfg)
+    try:
+        final = None
+        if run:
+            cases = _typed_cases(root, cfg)
+            humans_df = pd.read_parquet(root / cfg.paths.derived / "humans.parquet")
+            ladder = build_ladder(cfg, ladder_inputs(cfg, cases, humans_df))
+            by_id = {str(r["case_id"]): case_from_record(r) for r in cases.to_dict("records")}
+            rebuild_ladder(led, run, by_id, primary_resolutions(humans_df), ladder, cfg.ladder.tick_k)
+            final = {cell: cell_summary(ladder, cell) for cell in sorted(ladder.cells)}
+        rep = export(led, out, final)
+    finally:
+        led.close()
+    typer.echo(verification_line(rep))
+    typer.echo(f"export: {out / 'ledger.jsonl'} · {out / 'head.json'} · {out / 'governance_report.md'}")
+    if not rep.ok:
+        raise typer.Exit(1)
+
+
+@ledger_app.command("import-run")
+def ledger_import_run(run: str = typer.Option(..., "--run", help="Recorded run id under var/runs"),
+                      config: Path = ConfigOpt) -> None:
+    """Write a run recorded before the ledger existed (its decisions.jsonl) to the ledger; no endpoint call."""
+    from .runs import import_run_records
+
+    root, cfg = _setup(config)
+    run_dir = _run_dir(root, cfg, run, "ledger import-run")
+    cases = _typed_cases(root, cfg)
+    humans_df = pd.read_parquet(root / cfg.paths.derived / "humans.parquet")
+    led, path = _ledger(root, cfg)
+    try:
+        head = import_run_records(led, run_dir, cfg, cases, humans_df)
+        rep = led.verify()
+    finally:
+        led.close()
+    typer.echo(f"{run} → {path}: head seq {head.seq} · {head.hash} · verify {'OK' if rep.ok else rep.reason}")
+
+
+@gold_app.command("import-ledger")
+def gold_import_ledger(config: Path = ConfigOpt) -> None:
+    """gold_labels.jsonl → GOLD_LABEL entries {case_id, labeler, action, amount_cents, note_sha}; idempotent."""
+    root, cfg = _setup(config)
+    labels = read_labels(_gold_dir(root, cfg) / "gold_labels.jsonl")
+    led, path = _ledger(root, cfg)
+    try:
+        seen = {(json.loads(p)["case_id"], actor) for p, actor in
+                led.conn.execute("SELECT payload, actor FROM ledger WHERE kind = 'GOLD_LABEL'")}
+        new = []
+        for x in labels:
+            key = (x["case_id"], x["labeler"])
+            if key in seen:
+                continue
+            seen.add(key)
+            note = x.get("note") or ""
+            new.append(("GOLD_LABEL", x["labeler"], {
+                "case_id": x["case_id"], "labeler": x["labeler"], "action": x["action"],
+                "amount_cents": None if x.get("amount_cents") is None else int(x["amount_cents"]),
+                "note_sha": hashlib.sha256(note.encode("utf-8")).hexdigest()}))
+        if new:
+            led.append_many(new)
+    finally:
+        led.close()
+    typer.echo(f"gold import-ledger: {len(new)} new GOLD_LABEL entries ({len(labels)} labels) → {path}")

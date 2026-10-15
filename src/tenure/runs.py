@@ -10,8 +10,12 @@ cell events go out. A restart with the same run directory resumes after the last
 T05 wires the autonomy ladder (R.9) in through LadderBridge: commit → Ladder.observe, every tick_k →
 Ladder.evaluate (§7.5). LiveRun streams the live split by contact date from a seeded ladder, routes each case by
 its effective level, audits L2/L3 cases by unit_hash (§7.1, §17.1), injects drift (§17.2), applies the
-policy-update procedure (§17.3) and runs the global drift alarm (§6.7). Ladder events are buffered in order for
-the ledger (T06 persists them).
+policy-update procedure (§17.3) and runs the global drift alarm (§6.7).
+
+T06 persists both runs to the hash-chained ledger (R.10, §19): CONFIG, POLICY_VERSION, MODEL_PROFILE and
+RUN_STARTED at start; at every tick the tick's DECISION entries followed by its ladder events, in transactions of
+at most 500 entries (§16.2 step 6); RUN_FINISHED at the end. With a ledger, a restart resumes from the run's
+DECISION entries, the source of truth (§16.5), and rebuild_ladder() replays them into a fresh ladder.
 """
 from __future__ import annotations
 
@@ -42,6 +46,7 @@ from .events import EventBus, Recorder
 from .gpu import GpuPoller
 from .intake import INTAKE_SUBSETS, case_from_record, load_examples, merge_into_cases, subset_cases
 from .ladder import Ladder, LadderConfig, LadderEvent, LevelGate
+from .ledger import Head, Ledger
 from .llm import Completion, LLMClient
 from .policy import POLICY_V1, PolicyParams, resolve
 from .prompt import case_block, messages, prompt_sha, static_block
@@ -119,7 +124,8 @@ class ReplayRun:
                  clock: Callable[[], float] = time.monotonic,
                  now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
                  concurrency: int | None = None, max_ahead: int | None = None, tick_k: int | None = None,
-                 adapter_sha: str | None = None, selection: Mapping[str, Any] | None = None, record: bool = True):
+                 adapter_sha: str | None = None, selection: Mapping[str, Any] | None = None, record: bool = True,
+                 ledger: Ledger | None = None):
         root = Path(root)
         self.cfg = config
         self.split = split
@@ -164,6 +170,7 @@ class ReplayRun:
         self.gpu = gpu
         self._transport = transport
         self._record = record
+        self.ledger = ledger
         self.manifest: dict[str, Any] = {
             "run_id": self.run_id, "mode": "replay", "split": split, "profile": prof.name, "model": prof.model,
             "adapter": adapter, "adapter_sha": self.adapter_sha, "policy_sha": self.policy_sha,
@@ -273,7 +280,17 @@ class ReplayRun:
         elif self.bus.progress_due():
             self.bus.publish("progress", self._progress())
 
+    def _take_ladder_events(self) -> list[LadderEvent]:
+        take = getattr(self.ladder, "take_ledger_events", None)
+        return take() if take is not None else []
+
     def _flush(self) -> None:
+        """The ledger first (decisions, then the tick's ladder events), then decisions.jsonl: with a ledger, a
+        crash between the two is repaired on resume from the ledger."""
+        events = self._take_ladder_events()
+        if self.ledger is not None and (self.pending_decisions or events):
+            append_entries(self.ledger, [("DECISION", "agent", rec) for rec in self.pending_decisions]
+                           + ladder_entries(events))
         if not self.pending_decisions:
             return
         with open(self.decisions_path, "a", encoding="utf-8", newline="\n") as f:
@@ -284,11 +301,13 @@ class ReplayRun:
         self.pending_decisions = []
 
     def _tick(self, all_cells: bool = False) -> None:
-        self._flush()
+        published: list[tuple[str, dict[str, Any]]] = []
         if self._evaluated_at != self.committed:  # the end-of-run tick never repeats a tick_k look (§4.6)
             self._evaluated_at = self.committed
-            for name, data in self.ladder.evaluate():
-                self.bus.publish(name, data)
+            published = self.ladder.evaluate()
+        self._flush()
+        for name, data in published:
+            self.bus.publish(name, data)
         self.bus.tick()
         for cell in sorted(self._cells if all_cells else self._touched):
             self.bus.publish("cell", self._cell_event(cell))
@@ -296,15 +315,22 @@ class ReplayRun:
         self.bus.publish("progress", self._progress(), force=True)
 
     def _resume(self) -> None:
-        """Rebuild state from flushed DECISION records; a torn last line (crash mid-write) is dropped."""
-        if not self.decisions_path.exists():
-            return
-        text = self.decisions_path.read_text(encoding="utf-8")
-        if text and not text.endswith("\n"):
-            text = text[: text.rfind("\n") + 1]
+        """Rebuild state from committed DECISION records: the ledger's when there is one (decisions.jsonl is then
+        rewritten to match it), else decisions.jsonl, whose torn last line (crash mid-write) is dropped."""
+        if self.ledger is not None:
+            recs = decision_records(self.ledger, self.run_id)
             with open(self.decisions_path, "w", encoding="utf-8", newline="\n") as f:
-                f.write(text)
-        recs = [json.loads(line) for line in text.splitlines() if line.strip()]
+                for rec in recs:
+                    f.write(json.dumps(rec, sort_keys=True, ensure_ascii=False) + "\n")
+        elif not self.decisions_path.exists():
+            return
+        else:
+            text = self.decisions_path.read_text(encoding="utf-8")
+            if text and not text.endswith("\n"):
+                text = text[: text.rfind("\n") + 1]
+                with open(self.decisions_path, "w", encoding="utf-8", newline="\n") as f:
+                    f.write(text)
+            recs = [json.loads(line) for line in text.splitlines() if line.strip()]
         for k, rec in enumerate(recs):
             if k >= len(self.cases) or rec["case_id"] != self.cases[k].case_id or rec["run_id"] != self.run_id:
                 raise ValueError(f"{self.decisions_path} does not match this run's cases at record {k + 1}")
@@ -314,6 +340,7 @@ class ReplayRun:
                 self.ladder.evaluate()
                 self._evaluated_at = k + 1
         self.resumed_from = len(recs)
+        self._take_ladder_events()  # already in the ledger from the earlier attempt
         self._touched.clear()
 
     # --- events and metrics --------------------------------------------------------------------------------
@@ -398,12 +425,26 @@ class ReplayRun:
 
     # --- the run -------------------------------------------------------------------------------------------
 
+    def _start_entries(self) -> list[tuple[str, str, dict[str, Any]]]:
+        cfg, prof = self.cfg, self.profile
+        return [
+            ("CONFIG", "system", {"config_sha": config_sha(cfg), "config": _hashable(cfg.model_dump())}),
+            ("POLICY_VERSION", "system", {"policy_id": Path(cfg.policy.file).stem, "policy_sha": self.policy_sha,
+                                          "changed_clauses": []}),
+            ("MODEL_PROFILE", "system", {"profile": prof.name, "model": prof.model, "endpoint_kind": prof.name,
+                                         "vllm_version": None, "rocm_version": None,
+                                         "gpu": None if self.gpu is None else "polled", "image_digest": None}),
+            ("RUN_STARTED", "system", _hashable(self.manifest)),
+        ]
+
     async def run(self) -> dict[str, Any]:
         self._reset()
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self._resume()
         started_at = _utc(self._now())
         self._start_manifest(started_at)
+        if self.ledger is not None:
+            self.ledger.append_many(self._start_entries())
         recorder = Recorder(self.run_dir / "events.jsonl", clock=self._clock) if self._record else None
         if recorder is not None:
             self.bus.add_sink(recorder)
@@ -429,6 +470,9 @@ class ReplayRun:
                                          "resumed_from": self.resumed_from, "valid": self.valid, "agree": self.agree,
                                          "wall_s": metrics["wall_s"], "metrics": metrics, "snapshot_sha": sha}
             self._write_manifest()
+            if self.ledger is not None:
+                self.ledger.append("RUN_FINISHED", "system", _hashable({"run_id": self.run_id,
+                                                                       **self.manifest["finished"]}))
             self.bus.publish("run", self._run_event("finished", started_at))
             return {"run_id": self.run_id, "committed": self.committed, "resumed_from": self.resumed_from,
                     "snapshot": snapshot, "snapshot_sha": sha, "metrics": metrics}
@@ -588,12 +632,18 @@ class LadderBridge:
     def __init__(self, ladder: Ladder, humans: Mapping[str, Resolution]):
         self.ladder = ladder
         self.humans = humans
-        self.events: list[LadderEvent] = []  # every ladder event in order: the ledger buffer (T06 persists it)
-        self._pending: list[LadderEvent] = []
+        self.events: list[LadderEvent] = []  # every ladder event in order
+        self._pending: list[LadderEvent] = []  # not yet published on the bus
+        self._unpersisted: list[LadderEvent] = []  # not yet written to the ledger
 
     def _add(self, events: list[LadderEvent]) -> None:
         self.events += events
         self._pending += events
+        self._unpersisted += events
+
+    def take_ledger_events(self) -> list[LadderEvent]:
+        out, self._unpersisted = self._unpersisted, []
+        return out
 
     def observe(self, case: Case, record: Mapping[str, Any]) -> None:
         self._add(self.ladder.observe(case, agent_from_payload(record["decision"]), self.humans[case.case_id]))
@@ -831,8 +881,10 @@ class LiveRun:
     def __init__(self, config: TenureConfig, *, cases: Iterable[Case], humans: Mapping[str, Resolution], agent: Agent,
                  ladder: Ladder, drift: Drift | None = None, policy_update: PolicyUpdate | None = None,
                  run_dir: str | Path | None = None, bus: EventBus | None = None, global_alarm: bool = True,
-                 agent_policy: str = "v1", run_id: str = "live"):
+                 agent_policy: str = "v1", run_id: str = "live", ledger: Ledger | None = None):
         self.cfg = config
+        self.ledger = ledger
+        self._persisted = 0  # how many of self.events are in the ledger
         self.cases = sorted(cases, key=lambda c: (c.contact_date, c.case_id))
         missing = [c.case_id for c in self.cases if c.case_id not in humans]
         if missing:
@@ -919,7 +971,20 @@ class LiveRun:
         if any(e.kind == "CUSUM_SIGNAL" for e in events):
             self._tick(day)
 
+    def _persist(self) -> None:
+        if self.ledger is not None and self._persisted < len(self.events):
+            append_entries(self.ledger, ladder_entries(self.events[self._persisted:]))
+        self._persisted = len(self.events)
+
     def run(self) -> dict[str, Any]:
+        if self.ledger is not None:
+            self.ledger.append("RUN_STARTED", "system", {
+                "run_id": self.run_id, "mode": "live", "cases": len(self.cases), "seed": self.cfg.seed,
+                "first_date": self.cases[0].contact_date.isoformat() if self.cases else None,
+                "last_date": self.cases[-1].contact_date.isoformat() if self.cases else None,
+                "drift": None if self.drift is None else self.drift.scenario,
+                "policy_update": None if self.policy_update is None else self.policy_update.at.isoformat(),
+                "levels_at_start": {cell: st.level.name for cell, st in sorted(self.ladder.cells.items())}})
         self._arm()
         at_start = {cell: st.level.name for cell, st in sorted(self.ladder.cells.items())}
         injected = updated = False
@@ -941,6 +1006,7 @@ class LiveRun:
             for c in group:
                 self._route(c, day)
             self._tick(day)
+            self._persist()
             days += 1
             self.bus.publish("progress", {"run_id": self.run_id, "committed": len(self.routes),
                                           "total": len(self.cases), "sim_date": day.isoformat(), "elapsed_s": None,
@@ -965,6 +1031,12 @@ class LiveRun:
                                                       "changed_clauses": sorted(pu.changed_clauses)},
             "event_counts": dict(sorted(Counter(e.kind for e in self.events).items())),
         }
+        self._persist()
+        if self.ledger is not None:
+            self.ledger.append("RUN_FINISHED", "system", {
+                "run_id": self.run_id, "mode": "live", **{k: summary[k] for k in (
+                    "cases", "days", "observed", "audited", "autonomous", "observed_agree", "levels",
+                    "event_counts")}})
         if self.run_dir is not None:
             self.run_dir.mkdir(parents=True, exist_ok=True)
             with open(self.run_dir / "routes.jsonl", "w", encoding="utf-8", newline="\n") as f:
@@ -974,3 +1046,93 @@ class LiveRun:
                 for e in self.events:
                     f.write(json.dumps({"kind": e.kind, "payload": e.payload}, sort_keys=True) + "\n")
         return summary
+
+
+# --- T06: ledger persistence and rebuild -----------------------------------------------------------------------------
+
+LEDGER_BATCH = 500  # entries per transaction (RUNBOOK T06)
+
+
+def _actor(e: LadderEvent) -> str:
+    if e.kind == "OVERRIDE":
+        return str(e.payload["actor"])
+    return "ladder" if e.kind in ("LEVEL_CHANGE", "CUSUM_SIGNAL") else "system"
+
+
+def ladder_entries(events: Iterable[LadderEvent]) -> list[tuple[str, str, dict[str, Any]]]:
+    return [(e.kind, _actor(e), dict(e.payload)) for e in events]
+
+
+def append_entries(ledger: Ledger, entries: Sequence[tuple[str, str, dict[str, Any]]],
+                   batch: int = LEDGER_BATCH) -> Head:
+    head = ledger.head()
+    for i in range(0, len(entries), batch):
+        head = ledger.append_many(entries[i:i + batch])
+    return head
+
+
+def append_ladder_events(ledger: Ledger, events: Iterable[LadderEvent]) -> Head:
+    """Persist ladder events (LEVEL_CHANGE, CUSUM_SIGNAL, OVERRIDE, POLICY_VERSION, DRIFT_INJECTED, GLOBAL_ALARM)."""
+    return append_entries(ledger, ladder_entries(events))
+
+
+def decision_records(ledger: Ledger, run_id: str) -> list[dict[str, Any]]:
+    """A run's DECISION payloads in ledger order: its committed records."""
+    rows = ledger.conn.execute("SELECT payload FROM ledger WHERE kind = 'DECISION' "
+                               "AND json_extract(payload, '$.run_id') = ? ORDER BY seq", (run_id,))
+    return [json.loads(p) for (p,) in rows]
+
+
+def rebuild_ladder(ledger: Ledger, run_id: str, cases: Iterable[Case] | Mapping[str, Case],
+                   humans: Mapping[str, Resolution], ladder: Ladder, tick_k: int) -> list[LadderEvent]:
+    """Replay a run's DECISION entries through a fresh ladder (master §16.5): same order, same state."""
+    recs = decision_records(ledger, run_id)
+    if not recs:
+        raise ValueError(f"the ledger holds no DECISION entries for run {run_id}")
+    by_id = dict(cases) if isinstance(cases, Mapping) else {c.case_id: c for c in cases}
+    missing = [r["case_id"] for r in recs if r["case_id"] not in by_id]
+    if missing:
+        raise ValueError(f"{len(missing)} cases of run {run_id} are unknown (first: {missing[0]})")
+    return replay_ladder(ladder, [by_id[r["case_id"]] for r in recs], recs, humans, tick_k)
+
+
+def import_run_records(ledger: Ledger, run_dir: str | Path, cfg: TenureConfig, cases: pd.DataFrame,
+                       humans: pd.DataFrame, tick_k: int | None = None) -> Head:
+    """Write a recorded run's committed decisions.jsonl to the ledger with no endpoint call: the run-start entries
+    (from its manifest), each tick's DECISIONs followed by the ladder events they cause, and RUN_FINISHED only if
+    the run finished. Used for runs recorded before the ledger existed (T06; R-20261015-01 stopped under D-k2)."""
+    run_dir = Path(run_dir)
+    if decision_records(ledger, run_dir.name):
+        raise ValueError(f"the ledger already holds DECISION entries for run {run_dir.name}")
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    recs = read_records(run_dir)
+    ids = [r["case_id"] for r in recs]
+    rows = cases[cases["case_id"].isin(set(ids))]
+    by_id = {str(r["case_id"]): case_from_record(r) for r in rows.to_dict("records")}
+    primary = primary_resolutions(humans, ids)
+    ladder = build_ladder(cfg, ladder_inputs(cfg, cases, humans))
+    bridge = LadderBridge(ladder, primary)
+    k = tick_k or cfg.ladder.tick_k
+    policy_path = Path(cfg.policy.file)
+    started = {**manifest, "source": "decisions.jsonl import (T06): no endpoint call"}
+    started.pop("finished", None)
+    head = ledger.append_many([
+        ("CONFIG", "system", {"config_sha": config_sha(cfg), "config": _hashable(cfg.model_dump())}),
+        ("POLICY_VERSION", "system", {"policy_id": policy_path.stem, "policy_sha": manifest.get("policy_sha"),
+                                      "changed_clauses": []}),
+        ("MODEL_PROFILE", "system", {"profile": manifest.get("profile"), "model": manifest.get("model"),
+                                     "endpoint_kind": manifest.get("profile"), "vllm_version": None,
+                                     "rocm_version": None, "gpu": None, "image_digest": None}),
+        ("RUN_STARTED", "system", _hashable(started)),
+    ])
+    batch: list[tuple[str, str, dict[str, Any]]] = []
+    for i, rec in enumerate(recs, 1):
+        bridge.observe(by_id[rec["case_id"]], rec)
+        batch.append(("DECISION", "agent", rec))
+        if i % k == 0 or i == len(recs):
+            bridge.evaluate()
+            head = append_entries(ledger, batch + ladder_entries(bridge.take_ledger_events()))
+            batch = []
+    if "finished" in manifest:
+        head = ledger.append("RUN_FINISHED", "system", _hashable({"run_id": run_dir.name, **manifest["finished"]}))
+    return head
