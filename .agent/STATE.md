@@ -1,7 +1,7 @@
 # STATE
 current_module:   T05   status: COMPLETE (G05 green against the mock, D-offline-gates; LIVE VERIFICATION PENDING)
-                  STOPPED per the T05 STOP condition: no cell reaches L2 under the defaults → human decision needed
-                  (D-gates / D-dmax, or more replay evidence), plus open question Q9
+                  T05 STOP condition resolved by the human (2026-10-15): defaults kept (D-gates, D-dmax approved),
+                  demo uses the synthetic test evidence (D-demo), no further live replay; Q9 → D-q9
 last_green_gate:  G05 (gates/G05.json, commit baaf3b2 + the gate commit; 330 tests, 0 failures, 0 skipped, 125 s,
                   cumulative G00–G05, mock endpoint under D-offline-gates, no outbound HTTP; run with
                   OPENBLAS/OMP/MKL_NUM_THREADS=1 and PYTHONIOENCODING=utf-8. Coverage cusum 95.7%, ladder 100%,
@@ -127,13 +127,8 @@ ladder (T05):     base replay with the ladder (`uv run tenure ladder sensitivity
                       POSITIVE\|V3 08-29 (289). No global alarm. DELAY\|V1–V4 stay at L0 throughout, so the D-POLICY
                       headline (DELAY L2 → L1) cannot show on this evidence; tests/integration/test_drift.py shows it
                       on synthetic streams.
-open_questions:   1
-                  Q9 (T05, 2026-10-15): RUNBOOK T05 test_policy_update_procedure says "POLICY_VERSION with P1 changed →
-                      DELAY and NOT_RECEIVED cells capped at L1". Master §1.1 (C1, source of truth) maps P1 only to DELAY
-                      (NOT_RECEIVED uses E5, F3, N3), and §17.3 caps "every cell whose case type uses a changed clause".
-                      Implemented per the master: runs.CASE_TYPE_CLAUSES follows §1.1, and the tests assert that DELAY is
-                      capped and NOT_RECEIVED is untouched. If the runbook reading is intended, one table entry
-                      (NOT_RECEIVED += P1) and two test assertions change. Needs a human decision; no test was edited.
+open_questions:   0 (Q9 → D-q9)
+                  Q9 (T05, resolved 2026-10-15 → D-q9): P1 caps DELAY only, per master §1.1; no code or test change.
                   Earlier, all resolved (Q8 → D-offline-gates · Q7 → D-rpm2 · Q3 → D-q3 · Q4 → D-replay · Q5 → D-intake · Q6 approved with D-intake)
                   Q7 (T03, 2026-10-15): the Token Factory now returns rate-limit headers that contradict D-rpm:
                       x-ratelimit-limit-user-rpm 20 (limiter sends 30) and x-ratelimit-limit-user-daily-usd 1
@@ -148,9 +143,8 @@ open_questions:   1
                       500 as that test's evidence needs a test change (C4) and still fails its < 1% bound. Not run,
                       not edited; gate(G03) not committed. RESOLVED → D-offline-gates (mock gates until a stable link; amended
                       with a 5 ms mock round trip in tests/conftest.py, no assertion changed).
-resume_point:     T06 (ledger) can start: G05 is green. T05 waits on the human for D-gates/D-dmax (STOP condition) and Q9.
-                  A promotion demo on real replay evidence needs more replay records (the rest of the slice on a stable
-                  link or the vLLM droplet); with them, re-run `tenure ladder sensitivity --run <id>` (records only).
+resume_point:     T06 (ledger), offline under D-offline-gates. D-gates, D-dmax, D-ni, D-drift, D-lora, D-evolus,
+                  D-q9 and D-demo approved 2026-10-15; no further live replay batches (D-demo).
                   Ladder CLI commands: cli.py pins one BLAS thread by default (Brook–Evans solves ~10x faster); set
                   PYTHONIOENCODING=utf-8 when stdout is redirected on Windows.
                   Previous: T05 (ladder + CUSUM) in a fresh session. Gates run under D-offline-gates while off a stable link:
@@ -167,4 +161,4 @@ module_table:     | module | gate | status | commit |
                   | T02 | G02 | green live (981aa19) | 981aa19 (feat) |
                   | T03 | G03 | green MOCK (D-offline-gates), live pending | 7baaa54 (feat), 0b03a96 (D-rpm2), 93ee9e4 |
                   | T04 | G04 | green MOCK (D-offline-gates), live pending | 5474446 (test), dfb94eb (feat) |
-                  | T05 | G05 | green MOCK (D-offline-gates), live pending; STOP: no cell ≥ L2 | c33cfe3 (test), baaf3b2 (feat) |
+                  | T05 | G05 | green MOCK (D-offline-gates), live pending; no cell ≥ L2 on 500 cases (D-demo) | c33cfe3 (test), baaf3b2 (feat) |
