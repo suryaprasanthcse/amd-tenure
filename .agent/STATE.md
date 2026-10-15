@@ -1,5 +1,5 @@
 # STATE
-current_module:   T02   status: COMPLETE (G02 green live, 981aa19) → next T03 (blocked on Q4)
+current_module:   T02   status: COMPLETE (G02 green live, 981aa19) → next T03
 last_green_gate:  G02 (gates/G02.json, commit 981aa19; 200 tests, 0 failures, 0 skipped, 651 s, cumulative G00–G02,
                   llm tests live on Token Factory behind the 30 RPM limiter; humans 100%, gold 99.2% coverage)
                   G01: gates/G01.json, commit b85cf6a, 184 tests live after the D-intake run.
@@ -17,7 +17,7 @@ platform_facts:   S1: PASS (2026-10-15) → host=developer.amd.com.cn, model=Gem
                       vllm_structured/system 98/100 (2 SCHEMA_ERROR) · vllm_structured/fold 100/100
                       Caveat: completions arrive wrapped in ```json fences, which a grammar-constrained decoder could not
                       emit, so the endpoint probably accepts but ignores `structured_outputs`; validity comes from
-                      parse_decision's fence stripping. D-mode proposed accordingly.
+                      parse_decision's fence stripping. D-mode approved (decided 2026-10-15).
                       Latencies in S3.json include limiter queueing (100 tasks gathered at 2 s spacing); use S2's.
                   decide_sample: 30/30 valid (tests/fixtures/llm/decide_sample.jsonl, vllm_structured, Gemma-4-31B-IT)
                   S4/S5/S6: –
@@ -59,12 +59,10 @@ data_facts:       source: data/derived/ingest_manifest.json (config_sha cfe402a6
                       labels: none yet → HUMAN TASK 17 Oct 15:30–18:00: `uv run tenure gold label --labeler <name>`
                       (English translations come from Gemma once per case, cached, through the 30 RPM limiter)
 runs:             –
-open_questions:   1 (Q3 → D-q3; Q5 → D-intake; Q6 approved 2026-10-15: slice and gold-pool definitions)
-                  Q4 (S2 fail → master §24 fallback): ~20 cases/min under 30 RPM. D-intake proposes the 3k hash slice
-                     as option (a)'s live replay slice. Still open: pre-run the rest on the droplet, or replay only the slice.
-intake_plan:     done (see data_facts → intake). CLI: `tenure intake --subset gold-pool|slice`, `--keywords-rest`.
-resume_point:     T03 (replay engine) needs Q4 answered first: at ~20 cases/min the Token Factory cannot replay
-                  15k cases in time. D-mode still awaits approval. Human task: gold labelling on 17 Oct.
+open_questions:   0 (Q3 → D-q3 · Q4 → D-replay · Q5 → D-intake · Q6 approved with D-intake)
+resume_point:     T03 (replay engine) in a fresh session. Replay = the D-intake replay slice, 3,000 cases, live on
+                  Token Factory (D-replay, ~2.5 h at 30 RPM; one live process at a time, D-rpm). Decider mode
+                  vllm_structured/fold (D-mode, decided). Human task: gold labelling on 17 Oct.
 module_table:     | module | gate | status | commit |
                   | T00 | G00 | green (live re-run: 45/45 pass) | ca580c2 (feat) |
                   | T01 | G01 | green live after intake (b85cf6a) | 3d09b72, 5e124f3, e7c5396, b85cf6a (feat) |

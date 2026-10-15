@@ -7,6 +7,7 @@
 data/raw/*
 !data/raw/.gitkeep
 data/derived/
+data/gold/
 
 # Runtime state
 var/
