@@ -1,9 +1,8 @@
 # STATE
-current_module:   T01   status: COMPLETE (G01 green live after intake, b85cf6a) → next T02
-last_green_gate:  G01 (gates/G01.json, commit b85cf6a; 184 tests, 0 failures, 0 skipped, 645 s, live Token Factory
-                  endpoint behind the 30 RPM limiter, after the full D-intake run)
-                  G00 tests also pass live (45/45, .agent/evidence/T01/g00-live.txt); gates/G00.json keeps its original
-                  record because gate.py G00 now trips on coverage of T01 modules, which G00 markers never exercise.
+current_module:   T02   status: COMPLETE (G02 green live, 981aa19) → next T03 (blocked on Q4)
+last_green_gate:  G02 (gates/G02.json, commit 981aa19; 200 tests, 0 failures, 0 skipped, 651 s, cumulative G00–G02,
+                  llm tests live on Token Factory behind the 30 RPM limiter; humans 100%, gold 99.2% coverage)
+                  G01: gates/G01.json, commit b85cf6a, 184 tests live after the D-intake run.
 platform_facts:   S1: PASS (2026-10-15) → host=developer.amd.com.cn, model=Gemma-4-31B-IT, models_status=200,
                       listed=True, gemma=True, completions=3/3, rate_limit_headers: none reported
                       (`uv run tenure smoke --n 3`; .env holds the live TENURE_LLM_* values; D-llm-mock retired)
@@ -43,14 +42,30 @@ data_facts:       source: data/derived/ingest_manifest.json (config_sha cfe402a6
                       CAVEAT (sanity metric, not gated): the keyword rules miss much of what Gemma finds in the minority
                       types, so keyword-labelled cells (all of train, most of replay) will hold fewer of those types than
                       the Gemma-labelled slice. T04 should report results by intake source.
-                  hh agreement: see T02
+                  team (T02, `tenure humans`, seed 20261018, Policy v1): humans.parquet 41,935 cases (all splits except
+                      excluded), double-coded 0.1498; humans_drift.parquet 6,454 live cases, v2 from 2018-08-01 (D-POLICY)
+                  calibration on train+replay (35,481 cases, 5,328 pairs = 0.1502):
+                      human–human agreement 0.9261 (band 0.85–0.96 ✓) · oracle vs primary 0.9641 (≥ hh ✓)
+                      by type (pairs): SELLER_SERVICE 0.818 (11) · WRONG_VARIANT 0.824 (17) · QUALITY 0.870 (331) ·
+                      DAMAGED 0.914 (70) · DELAY 0.916 (166) · OTHER 0.923 (284) · POSITIVE 0.928 (3,074) · BILLING 0.931 (87) ·
+                      NOT_RECEIVED 0.935 (416) · VAGUE_COMPLAINT 0.935 (556) · MISSING_ITEM 0.944 (107) · REMORSE 0.951 (61) ·
+                      DEFECTIVE 0.958 (71) · WRONG_ITEM 0.961 (77) · spread over types with ≥ 100 pairs 0.074 (≥ 0.05 ✓)
+                      by intake source: gemma 0.918 (487 pairs) · keywords 0.927 (4,841 pairs)
+                      (master §14.5 synthetic mix: 0.890 hh, 0.938 oracle; the Olist mix is 70% POSITIVE, hence higher)
+                  gold (T02, `tenure gold sample`): data/gold/gold_cases.parquet, 300 cases from the D-intake gold pool
+                      BILLING 16 · DAMAGED 22 · DEFECTIVE 22 · DELAY 15 · MISSING_ITEM 23 · NOT_RECEIVED 24 · OTHER 21 ·
+                      POSITIVE 51 · QUALITY 22 · REMORSE 12 · SELLER_SERVICE 5 · VAGUE_COMPLAINT 22 · WRONG_ITEM 23 ·
+                      WRONG_VARIANT 22 (pool shortfalls in SELLER_SERVICE/REMORSE/DELAY redistributed by size, §15)
+                      labels: none yet → HUMAN TASK 17 Oct 15:30–18:00: `uv run tenure gold label --labeler <name>`
+                      (English translations come from Gemma once per case, cached, through the 30 RPM limiter)
 runs:             –
 open_questions:   1 (Q3 → D-q3; Q5 → D-intake; Q6 approved 2026-10-15: slice and gold-pool definitions)
                   Q4 (S2 fail → master §24 fallback): ~20 cases/min under 30 RPM. D-intake proposes the 3k hash slice
                      as option (a)'s live replay slice. Still open: pre-run the rest on the droplet, or replay only the slice.
 intake_plan:     done (see data_facts → intake). CLI: `tenure intake --subset gold-pool|slice`, `--keywords-rest`.
-resume_point:     T02 (synthetic team + gold harness). Gold sampling draws from the D-intake gold pool.
-                  Answer Q4 before T03. D-mode still awaits approval.
+resume_point:     T03 (replay engine) needs Q4 answered first: at ~20 cases/min the Token Factory cannot replay
+                  15k cases in time. D-mode still awaits approval. Human task: gold labelling on 17 Oct.
 module_table:     | module | gate | status | commit |
                   | T00 | G00 | green (live re-run: 45/45 pass) | ca580c2 (feat) |
                   | T01 | G01 | green live after intake (b85cf6a) | 3d09b72, 5e124f3, e7c5396, b85cf6a (feat) |
+                  | T02 | G02 | green live (981aa19) | 981aa19 (feat) |

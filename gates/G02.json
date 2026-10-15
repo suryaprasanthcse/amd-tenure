@@ -1,0 +1,32 @@
+{
+  "gate": "G02",
+  "module": "T02",
+  "status": "green",
+  "commit": "981aa191ac20c04811e123fc396b81f28d9500f9",
+  "utc": "2026-10-15T00:12:28+00:00",
+  "tests": {
+    "tests": 200,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "coverage": {
+    "__init__": 1.0,
+    "canonical": 0.975,
+    "cli": 0.235,
+    "config": 1.0,
+    "domain": 1.0,
+    "gold": 0.9923,
+    "humans": 1.0,
+    "intake": 0.9752,
+    "llm": 0.9247,
+    "olist": 0.9904,
+    "policy": 0.9873,
+    "prompt": 1.0,
+    "ratelimit": 1.0,
+    "schema": 0.9733,
+    "store": 0.9744
+  },
+  "forbidden": 0,
+  "problems": []
+}
