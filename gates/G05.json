@@ -1,0 +1,41 @@
+{
+  "gate": "G05",
+  "module": "T05",
+  "status": "green",
+  "commit": "baaf3b26f8d528c72e155499649f3017cd5c893d",
+  "utc": "2026-10-15T07:58:29+00:00",
+  "tests": {
+    "tests": 330,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "coverage": {
+    "__init__": 1.0,
+    "baselines": 1.0,
+    "canonical": 0.975,
+    "cli": 0.4301,
+    "config": 1.0,
+    "cost": 1.0,
+    "cusum": 0.9571,
+    "domain": 1.0,
+    "events": 0.9744,
+    "gold": 0.9928,
+    "gpu": 0.9412,
+    "humans": 1.0,
+    "intake": 0.9752,
+    "ladder": 1.0,
+    "llm": 0.9032,
+    "olist": 0.9904,
+    "policy": 0.9873,
+    "prompt": 1.0,
+    "ratelimit": 1.0,
+    "replay": 1.0,
+    "runs": 0.9528,
+    "schema": 0.9733,
+    "stats": 1.0,
+    "store": 0.9744
+  },
+  "forbidden": 0,
+  "problems": []
+}

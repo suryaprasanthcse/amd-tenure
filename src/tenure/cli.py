@@ -1010,6 +1010,6 @@ def live(from_run: str = typer.Option(..., "--from-run", help="Replay run whose 
     console.print(f"cells above L0 at go-live: {above} · promotions {len(summary['promotions'])} · "
                   f"demotions {len(summary['demotions'])} · global alarm {summary['global_alarm']}")
     for d in summary["demotions"]:
-        console.print(f"  demoted {d['cell']} {d['from']}→{d['to']} on {d['date']} after "
+        console.print(f"  demoted {d['cell']} {d['from']}->{d['to']} on {d['date']} after "
                       f"{d['outcomes_monitored']} monitored outcomes")
     console.print(f"record: {out}")

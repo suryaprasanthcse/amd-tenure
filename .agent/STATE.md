@@ -1,6 +1,12 @@
 # STATE
-current_module:   T04   status: COMPLETE (G04 green against the mock, D-offline-gates; LIVE VERIFICATION PENDING) → next T05
-last_green_gate:  G04 (gates/G04.json, commit dfb94eb; 268 tests, 0 failures, 0 skipped, 75 s, cumulative G00–G04,
+current_module:   T05   status: COMPLETE (G05 green against the mock, D-offline-gates; LIVE VERIFICATION PENDING)
+                  STOPPED per the T05 STOP condition: no cell reaches L2 under the defaults → human decision needed
+                  (D-gates / D-dmax, or more replay evidence), plus open question Q9
+last_green_gate:  G05 (gates/G05.json, commit baaf3b2 + the gate commit; 330 tests, 0 failures, 0 skipped, 125 s,
+                  cumulative G00–G05, mock endpoint under D-offline-gates, no outbound HTTP; run with
+                  OPENBLAS/OMP/MKL_NUM_THREADS=1 and PYTHONIOENCODING=utf-8. Coverage cusum 95.7%, ladder 100%,
+                  runs 95.3%. LIVE VERIFICATION PENDING for pre-flight, as for G03/G04)
+                  G04: (gates/G04.json, commit dfb94eb; 268 tests, 0 failures, 0 skipped, 75 s, cumulative G00–G04,
                   llm tests against the in-process MOCK endpoint under D-offline-gates, no outbound HTTP:
                   no live verification. Coverage stats 100%, cost 100%, baselines 100%, gold 99.3%.
                   LIVE VERIFICATION PENDING for pre-flight, as for G03)
@@ -96,7 +102,39 @@ evaluation:       R-20261015-01 (T04, `uv run tenure evaluate --run R-20261015-0
                       NON_INFERIORITY 47, VALID_RATE 9 · L2: N_MIN 49, NON_INFERIORITY 48, COST 9, VALID_RATE 9, CEILING 7
                       · L3: N_MIN 49, NON_INFERIORITY 49, COST 9, VALID_RATE 9, CEILING 7. Cost (B 2,000, seed per cell,
                       run_id, n): POSITIVE|V1 mean/UCB 11.5/23.0 ¢ vs hh 0.0 ¢ (threshold 50 ¢); POSITIVE|V2 15.4/30.8 ¢
-open_questions:   0 (Q8 → D-offline-gates · Q7 → D-rpm2 · Q3 → D-q3 · Q4 → D-replay · Q5 → D-intake · Q6 approved with D-intake)
+ladder (T05):     base replay with the ladder (`uv run tenure ladder sensitivity --run R-20261015-01`, records only,
+                      no endpoint; var/runs/R-20261015-01/{sensitivity.md,sensitivity.json,ladder_state.json}):
+                      FINAL HEAT MAP after 500 records, 2 ticks (tick_k 250): all 49 observed cells at L0; 0 at L1/L2/L3;
+                      0 promotions, 0 CUSUM signals. Only POSITIVE\|V1 (n 139, x 130, valid 135) and POSITIVE\|V2
+                      (n 130, x 121, valid 125) reach n ≥ 30; both are blocked by VALID_RATE alone (endpoint errors).
+                      Cell volumes v_c come from the whole replay split (17,985 cases / 181 days), not the 500-case sample.
+                  SENSITIVITY TABLE (cells ≥ L2 / cells ≥ L3, R-20261015-01):
+                      | δ L2 / L3     | D_max 30 | D_max 60 | D_max 90 | D_max inf |
+                      |---------------|----------|----------|----------|-----------|
+                      | 0.050 / 0.030 | 0 / 0    | 0 / 0    | 0 / 0    | 0 / 0     |
+                      | 0.075 / 0.050 | 0 / 0    | 0 / 0    | 0 / 0    | 0 / 0     |
+                      | 0.100 / 0.075 | 0 / 0    | 0 / 0    | 0 / 0    | 0 / 0     |
+                      No variant moves any cell, because the binding blockers sit below L2: L1 fails on VALID_RATE
+                      (0.971 / 0.962 < 0.98), and L2 also needs n ≥ 150 in the window (max n is 139). Neither δ nor
+                      D_max acts on those, so loosening them would change nothing.
+                  LIVE D-POLICY (`uv run tenure live --from-run R-20261015-01 --drift policy --agent mock`,
+                      var/runs/L-20261015-01): MOCK AGENT (policy oracle v1, 2% deterministic errors), NOT GEMMA:
+                      these figures describe the ladder mechanics only and must never be reported as model results.
+                      6,454 live cases, 60 simulated days (2018-07-01 … 08-31), seeded all-L0 from the replay above.
+                      Observed 3,544 (agree 3,308), autonomous 3,212, audited 302. 18 promotions during live
+                      (POSITIVE\|V1 and POSITIVE\|V2 reach L2 on 07-08 / 07-11; 16 cells L0→L1). 3 CUSUM demotions,
+                      all L1→L0, none in DELAY: VAGUE_COMPLAINT\|V2 07-28 (9 monitored), VAGUE_COMPLAINT\|V1 08-21 (82),
+                      POSITIVE\|V3 08-29 (289). No global alarm. DELAY\|V1–V4 stay at L0 throughout, so the D-POLICY
+                      headline (DELAY L2 → L1) cannot show on this evidence; tests/integration/test_drift.py shows it
+                      on synthetic streams.
+open_questions:   1
+                  Q9 (T05, 2026-10-15): RUNBOOK T05 test_policy_update_procedure says "POLICY_VERSION with P1 changed →
+                      DELAY and NOT_RECEIVED cells capped at L1". Master §1.1 (C1, source of truth) maps P1 only to DELAY
+                      (NOT_RECEIVED uses E5, F3, N3), and §17.3 caps "every cell whose case type uses a changed clause".
+                      Implemented per the master: runs.CASE_TYPE_CLAUSES follows §1.1, and the tests assert that DELAY is
+                      capped and NOT_RECEIVED is untouched. If the runbook reading is intended, one table entry
+                      (NOT_RECEIVED += P1) and two test assertions change. Needs a human decision; no test was edited.
+                  Earlier, all resolved (Q8 → D-offline-gates · Q7 → D-rpm2 · Q3 → D-q3 · Q4 → D-replay · Q5 → D-intake · Q6 approved with D-intake)
                   Q7 (T03, 2026-10-15): the Token Factory now returns rate-limit headers that contradict D-rpm:
                       x-ratelimit-limit-user-rpm 20 (limiter sends 30) and x-ratelimit-limit-user-daily-usd 1
                       (used 0.029; a mostly-cached decider call costs ~1.2e-5 USD, so 3,000 cases ≈ 0.04 USD).
@@ -110,7 +148,12 @@ open_questions:   0 (Q8 → D-offline-gates · Q7 → D-rpm2 · Q3 → D-q3 · Q
                       500 as that test's evidence needs a test change (C4) and still fails its < 1% bound. Not run,
                       not edited; gate(G03) not committed. RESOLVED → D-offline-gates (mock gates until a stable link; amended
                       with a 5 ms mock round trip in tests/conftest.py, no assertion changed).
-resume_point:     T05 (ladder + CUSUM) in a fresh session. Gates run under D-offline-gates while off a stable link:
+resume_point:     T06 (ledger) can start: G05 is green. T05 waits on the human for D-gates/D-dmax (STOP condition) and Q9.
+                  A promotion demo on real replay evidence needs more replay records (the rest of the slice on a stable
+                  link or the vLLM droplet); with them, re-run `tenure ladder sensitivity --run <id>` (records only).
+                  Ladder CLI commands: cli.py pins one BLAS thread by default (Brook–Evans solves ~10x faster); set
+                  PYTHONIOENCODING=utf-8 when stdout is redirected on Windows.
+                  Previous: T05 (ladder + CUSUM) in a fresh session. Gates run under D-offline-gates while off a stable link:
                     TENURE_LLM_API_KEY=mock_key TENURE_LLM_BASE_URL=http://127.0.0.1:9/v1 uv run python scripts/gate.py G05
                   T04 provides tenure.stats (R.7), tenure.cost (R.2), tenure.baselines (pair_table, cell_baselines) and
                   cli.evaluate_run; evaluation.json blockers use the Appendix A codes (CEILING, N_MIN, VALID_RATE,
@@ -124,3 +167,4 @@ module_table:     | module | gate | status | commit |
                   | T02 | G02 | green live (981aa19) | 981aa19 (feat) |
                   | T03 | G03 | green MOCK (D-offline-gates), live pending | 7baaa54 (feat), 0b03a96 (D-rpm2), 93ee9e4 |
                   | T04 | G04 | green MOCK (D-offline-gates), live pending | 5474446 (test), dfb94eb (feat) |
+                  | T05 | G05 | green MOCK (D-offline-gates), live pending; STOP: no cell ≥ L2 | c33cfe3 (test), baaf3b2 (feat) |
