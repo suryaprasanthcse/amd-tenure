@@ -70,8 +70,10 @@ def _evidence(ev: Mapping[str, Any]) -> str:
 
 
 def governance_report(entries: Sequence[Mapping[str, Any]], rep: VerifyReport,
-                      final: Mapping[str, Mapping[str, Any]] | None = None, title: str = "Governance report") -> str:
-    """Markdown over exported ledger entries (dicts with seq, ts_utc, kind, actor, payload)."""
+                      final: Mapping[str, Mapping[str, Any]] | None = None, title: str = "Governance report",
+                      final_label: str = "") -> str:
+    """Markdown over exported ledger entries (dicts with seq, ts_utc, kind, actor, payload). `final` holds a
+    rebuilt ladder's cell summaries; `final_label` names the run they describe (the timelines cover every run)."""
     lines = [f"# {title}", "", verification_line(rep), ""]
     runs = [e for e in entries if e["kind"] in ("RUN_STARTED", "RUN_FINISHED")]
     lines += ["## Runs", "", "| seq | kind | run | mode | model | run_key | cases / committed |", "|---|---|---|---|---|---|---|"]
@@ -134,12 +136,13 @@ def governance_report(entries: Sequence[Mapping[str, Any]], rep: VerifyReport,
         if final is not None and cell in final:
             f = final[cell]
             blockers = _md(", ".join(f.get("blockers", [])) or "none")
-            lines += [f"Final: {f.get('level')} · n {f.get('n')} · blockers {blockers}", ""]
+            label = f" ({final_label})" if final_label else ""
+            lines += [f"Final{label}: {f.get('level')} · n {f.get('n')} · blockers {blockers}", ""]
     return "\n".join(lines).rstrip("\n") + "\n"
 
 
 def export(ledger: Ledger, out_dir: str | Path, final: Mapping[str, Mapping[str, Any]] | None = None,
-           actor: str = "system") -> VerifyReport:
+           actor: str = "system", final_label: str = "") -> VerifyReport:
     """Write ledger.jsonl, head.json and governance_report.md; on a verified ledger, append an EXPORT entry
     {path_sha, head_seq, head_hash} for the exported head (master §19.5)."""
     out = Path(out_dir)
@@ -149,7 +152,7 @@ def export(ledger: Ledger, out_dir: str | Path, final: Mapping[str, Mapping[str,
     (out / "head.json").write_text(json.dumps({"seq": head.seq, "hash": head.hash}) + "\n", encoding="utf-8",
                                    newline="\n")
     entries = read_jsonl(out / "ledger.jsonl")
-    (out / "governance_report.md").write_text(governance_report(entries, rep, final), encoding="utf-8", newline="\n")
+    (out / "governance_report.md").write_text(governance_report(entries, rep, final, final_label=final_label), encoding="utf-8", newline="\n")
     if rep.ok:
         path_sha = hashlib.sha256((out / "ledger.jsonl").read_bytes()).hexdigest()
         ledger.append("EXPORT", actor, {"path_sha": path_sha, "head_seq": head.seq, "head_hash": head.hash})

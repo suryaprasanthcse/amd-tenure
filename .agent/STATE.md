@@ -1,8 +1,9 @@
 # STATE
-current_module:   T05   status: COMPLETE (G05 green against the mock, D-offline-gates; LIVE VERIFICATION PENDING)
-                  T05 STOP condition resolved by the human (2026-10-15): defaults kept (D-gates, D-dmax approved),
-                  demo uses the synthetic test evidence (D-demo), no further live replay; Q9 → D-q9
-last_green_gate:  G05 (gates/G05.json, commit baaf3b2 + the gate commit; 330 tests, 0 failures, 0 skipped, 125 s,
+current_module:   T06   status: COMPLETE (G06 green against the mock, D-offline-gates; LIVE VERIFICATION PENDING) → next T07
+last_green_gate:  G06 (gates/G06.json, commit e424da1 + the gate commit; 344 tests, 0 failures, 0 skipped, 146 s,
+                  cumulative G00–G06, mock endpoint under D-offline-gates, no outbound HTTP; env OPENBLAS/OMP/MKL_NUM_THREADS=1,
+                  PYTHONIOENCODING=utf-8. Coverage ledger 99.0%, governance 89.6%, runs 92.2%. LIVE VERIFICATION PENDING)
+                  G05: (gates/G05.json, commit baaf3b2 + the gate commit; 330 tests, 0 failures, 0 skipped, 125 s,
                   cumulative G00–G05, mock endpoint under D-offline-gates, no outbound HTTP; run with
                   OPENBLAS/OMP/MKL_NUM_THREADS=1 and PYTHONIOENCODING=utf-8. Coverage cusum 95.7%, ladder 100%,
                   runs 95.3%. LIVE VERIFICATION PENDING for pre-flight, as for G03/G04)
@@ -127,6 +128,23 @@ ladder (T05):     base replay with the ladder (`uv run tenure ladder sensitivity
                       POSITIVE\|V3 08-29 (289). No global alarm. DELAY\|V1–V4 stay at L0 throughout, so the D-POLICY
                       headline (DELAY L2 → L1) cannot show on this evidence; tests/integration/test_drift.py shows it
                       on synthetic streams.
+ledger (T06):     var/ledger.db (tenure.yaml paths.ledger_db), one hash-chained ledger for all runs; DECISION payloads carry
+                      run_id (§16.5). `tenure ledger verify` → OK, 532 entries.
+                  R-20261015-01: written by `tenure ledger import-run` from its recorded decisions.jsonl (no endpoint call;
+                      a re-run would call the endpoint for the 17 uncached error cases). Entries 1–504: CONFIG, POLICY_VERSION,
+                      MODEL_PROFILE, RUN_STARTED (source: decisions.jsonl import), 500 DECISION, 0 ladder events, no
+                      RUN_FINISHED (the run was killed under D-k2). Timestamps are import time, not decision time.
+                      HEAD after the run: seq 504 · 63eec92adc3293fd49e59d17d73b1226b008bdf59b28c5d786096bb2928e981a
+                  L-20261015-01 (live D-POLICY, MOCK agent, `tenure live … --ledger`): entries 505–531: RUN_STARTED,
+                      DRIFT_INJECTED, 21 LEVEL_CHANGE, 3 CUSUM_SIGNAL, RUN_FINISHED; results identical to the T05 run.
+                      HEAD after the run: seq 531 · bf5186505d6cdcbc7ac016c6445273fbd94c4bf91123e3615761f5e8504bbf40
+                  Exports: exports/R-20261015-01/{ledger.jsonl, head.json, governance_report.md} from
+                      `tenure ledger export --out exports/R-20261015-01 --run R-20261015-01`. The first export (head 531)
+                      appended EXPORT at seq 532; the report was then re-exported with labelled final-state lines, so
+                      head.json = seq 532 · 9202839f346a9a7011b10ef1364e5e38dcb9464562e3ca9424a6ca5b04c4abda (the ledger
+                      head is now 533 with that second EXPORT). verify_jsonl re-verifies the export standalone.
+                      head.json and governance_report.md are committed; ledger.jsonl holds derived case decisions and stays
+                      out of git like data/derived (whether to ship it for §19.6 anchoring is a T08 packaging call).
 open_questions:   0 (Q9 → D-q9)
                   Q9 (T05, resolved 2026-10-15 → D-q9): P1 caps DELAY only, per master §1.1; no code or test change.
                   Earlier, all resolved (Q8 → D-offline-gates · Q7 → D-rpm2 · Q3 → D-q3 · Q4 → D-replay · Q5 → D-intake · Q6 approved with D-intake)
@@ -143,8 +161,10 @@ open_questions:   0 (Q9 → D-q9)
                       500 as that test's evidence needs a test change (C4) and still fails its < 1% bound. Not run,
                       not edited; gate(G03) not committed. RESOLVED → D-offline-gates (mock gates until a stable link; amended
                       with a 5 ms mock round trip in tests/conftest.py, no assertion changed).
-resume_point:     T06 (ledger), offline under D-offline-gates. D-gates, D-dmax, D-ni, D-drift, D-lora, D-evolus,
-                  D-q9 and D-demo approved 2026-10-15; no further live replay batches (D-demo).
+resume_point:     T07 (business impact + dashboard), offline under D-offline-gates. The ledger, its export and the governance
+                  report exist for R-20261015-01 and L-20261015-01; replay writes the ledger by default, `tenure live`
+                  only with --ledger. No further live replay batches (D-demo).
+                  Previous: T06 (ledger), offline under D-offline-gates.
                   Ladder CLI commands: cli.py pins one BLAS thread by default (Brook–Evans solves ~10x faster); set
                   PYTHONIOENCODING=utf-8 when stdout is redirected on Windows.
                   Previous: T05 (ladder + CUSUM) in a fresh session. Gates run under D-offline-gates while off a stable link:
@@ -161,4 +181,5 @@ module_table:     | module | gate | status | commit |
                   | T02 | G02 | green live (981aa19) | 981aa19 (feat) |
                   | T03 | G03 | green MOCK (D-offline-gates), live pending | 7baaa54 (feat), 0b03a96 (D-rpm2), 93ee9e4 |
                   | T04 | G04 | green MOCK (D-offline-gates), live pending | 5474446 (test), dfb94eb (feat) |
+                  | T06 | G06 | green MOCK (D-offline-gates), live pending | ebb4122 (test), e424da1 (feat) |
                   | T05 | G05 | green MOCK (D-offline-gates), live pending; no cell ≥ L2 on 500 cases (D-demo) | c33cfe3 (test), baaf3b2 (feat) |

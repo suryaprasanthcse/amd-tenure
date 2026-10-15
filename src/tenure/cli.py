@@ -1073,7 +1073,8 @@ def ledger_export(out: Path = typer.Option(..., "--out", help="Directory, e.g. e
             by_id = {str(r["case_id"]): case_from_record(r) for r in cases.to_dict("records")}
             rebuild_ladder(led, run, by_id, primary_resolutions(humans_df), ladder, cfg.ladder.tick_k)
             final = {cell: cell_summary(ladder, cell) for cell in sorted(ladder.cells)}
-        rep = export(led, out, final)
+        label = f"ladder rebuilt from run {run}'s DECISION entries" if run else ""
+        rep = export(led, out, final, final_label=label)
     finally:
         led.close()
     typer.echo(verification_line(rep))
