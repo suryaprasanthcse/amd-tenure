@@ -1,0 +1,49 @@
+
+=================================== ERRORS ====================================
+_________________ ERROR collecting tests/unit/test_replay.py __________________
+ImportError while importing test module 'C:\myspace\hacckathons\amd-tenure\tests\unit\test_replay.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Users\surya\.local\share\uv\python\cpython-3.12-windows-x86_64-none\Lib\importlib\__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\unit\test_replay.py:9: in <module>
+    from tenure.replay import ReplayEngine
+E   ModuleNotFoundError: No module named 'tenure.replay'
+__________ ERROR collecting tests/integration/test_runs_fake_llm.py ___________
+ImportError while importing test module 'C:\myspace\hacckathons\amd-tenure\tests\integration\test_runs_fake_llm.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Users\surya\.local\share\uv\python\cpython-3.12-windows-x86_64-none\Lib\importlib\__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\integration\test_runs_fake_llm.py:10: in <module>
+    from tenure.runs import AGENT_LABELS, HUMAN_LABELS, ReplayRun
+E   ModuleNotFoundError: No module named 'tenure.runs'
+______________ ERROR collecting tests/integration/test_events.py ______________
+ImportError while importing test module 'C:\myspace\hacckathons\amd-tenure\tests\integration\test_events.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Users\surya\.local\share\uv\python\cpython-3.12-windows-x86_64-none\Lib\importlib\__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\integration\test_events.py:8: in <module>
+    from tenure.events import EventBus, Recorder
+E   ModuleNotFoundError: No module named 'tenure.events'
+___________ ERROR collecting tests/integration/test_replay_live.py ____________
+ImportError while importing test module 'C:\myspace\hacckathons\amd-tenure\tests\integration\test_replay_live.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Users\surya\.local\share\uv\python\cpython-3.12-windows-x86_64-none\Lib\importlib\__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\integration\test_replay_live.py:13: in <module>
+    from tenure.runs import ReplayRun, load_primary_humans, load_replay_cases
+E   ModuleNotFoundError: No module named 'tenure.runs'
+=========================== short test summary info ===========================
+ERROR tests/unit/test_replay.py
+ERROR tests/integration/test_runs_fake_llm.py
+ERROR tests/integration/test_events.py
+ERROR tests/integration/test_replay_live.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 4 errors during collection !!!!!!!!!!!!!!!!!!!
+4 errors in 0.80s
