@@ -1,0 +1,18 @@
+..............................................................           [100%]
+=============================== tests coverage ================================
+______________ coverage: platform win32, python 3.12.14-final-0 _______________
+
+Name                   Stmts   Miss  Cover
+------------------------------------------
+src\tenure\cusum.py       70      3    96%
+src\tenure\ladder.py     200      0   100%
+src\tenure\runs.py       636     65    90%
+------------------------------------------
+TOTAL                    906     68    92%
+============================= slowest 6 durations =============================
+21.93s call     tests/integration/test_drift.py::test_sensitivity_table
+12.00s call     tests/integration/test_drift.py::test_live_cli_d_policy
+9.12s call     tests/integration/test_drift.py::test_global_alarm_freezes_promotions_not_levels
+1.62s call     tests/integration/test_drift.py::test_policy_update_procedure
+1.24s call     tests/integration/test_live_routing.py::test_replay_run_drives_ladder
+1.16s call     tests/integration/test_drift.py::test_drift_policy_demotes

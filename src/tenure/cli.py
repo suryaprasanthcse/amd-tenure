@@ -1,11 +1,17 @@
 """TENURE command line: doctor, ingest, smoke (T00); intake, decide-sample, spike s2|s3 (T01); humans, gold (T02);
-replay (T03); evaluate (T04)."""
+replay (T03); evaluate (T04); ladder sensitivity, live (T05)."""
 from __future__ import annotations
+
+import os
+
+# Small dense solves (the 401-state Brook-Evans chain, R.8) run ~10x slower on a multi-threaded BLAS than on one
+# thread (measured 38 vs 3.4 ms per ARL on 8 cores); pin before numpy loads. An explicit setting still wins.
+for _var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
+    os.environ.setdefault(_var, "1")
 
 import asyncio
 import hashlib
 import json
-import os
 import platform
 import re
 import statistics
@@ -874,3 +880,136 @@ def evaluate(run: str = typer.Option(..., "--run", help="Run id: the directory v
         console.print(f"{lv}: NI pass {len(s['ni_pass'])}/{len(report['cells'])} cells {s['ni_pass']} · "
                       f"blocked {s['blocked']}")
     console.print(f"evaluation: {out}")
+
+
+# --- T05: ladder sensitivity and the go-live simulation ----------------------------------------------------------------
+
+ladder_app = typer.Typer(no_args_is_help=True, help="Autonomy ladder: replay a run through it (master §7).")
+app.add_typer(ladder_app, name="ladder")
+
+
+def _write_json(path: Path, data: Any) -> None:
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False) + "\n",
+                   encoding="utf-8", newline="\n")
+    tmp.replace(path)
+
+
+def _run_dir(root: Path, cfg: TenureConfig, run: str, what: str) -> Path:
+    run_dir = root / cfg.paths.runs / run
+    if not (run_dir / "decisions.jsonl").exists():
+        console.print(f"{what}: no run at {run_dir} (needs decisions.jsonl)")
+        raise typer.Exit(1)
+    return run_dir
+
+
+@ladder_app.command("sensitivity")
+def ladder_sensitivity(run: str = typer.Option(..., "--run", help="Run id: the directory var/runs/<run_id>"),
+                       tick_k: int = typer.Option(0, "--tick-k", min=0, help="Tick every k records (0: tenure.yaml)"),
+                       config: Path = ConfigOpt) -> None:
+    """Replay a run's records through the ladder: cells at ≥ L2 / ≥ L3 for D_max ∈ {30, 60, 90, ∞} and three
+    margin variants → sensitivity.md, sensitivity.json, and ladder_state.json (levels under the defaults)."""
+    from .runs import sensitivity, sensitivity_markdown
+
+    root, cfg = _setup(config)
+    run_dir = _run_dir(root, cfg, run, "ladder sensitivity")
+    cases = _typed_cases(root, cfg)
+    humans_df = pd.read_parquet(root / cfg.paths.derived / "humans.parquet")
+    report, state = sensitivity(run_dir, cfg, cases, humans_df, tick_k or None)
+    _write_json(run_dir / "sensitivity.json", report)
+    _write_json(run_dir / "ladder_state.json", state)
+    md = sensitivity_markdown(report, state)
+    (run_dir / "sensitivity.md").write_text(md, encoding="utf-8", newline="\n")
+    console.print(md)
+    console.print(f"sensitivity: {run_dir / 'sensitivity.md'} · ladder state: {run_dir / 'ladder_state.json'}")
+
+
+def next_live_id(runs_dir: Path, today: date) -> str:
+    prefix = f"L-{today:%Y%m%d}-"
+    taken = [p.name for p in runs_dir.glob(prefix + "*")] if runs_dir.exists() else []
+    nums = [int(n[len(prefix):]) for n in taken if n[len(prefix):].isdigit()]
+    return f"{prefix}{max(nums, default=0) + 1:02d}"
+
+
+@app.command()
+def live(from_run: str = typer.Option(..., "--from-run", help="Replay run whose final ladder state seeds go-live"),
+         drift: str = typer.Option("policy", "--drift", help="policy (D-POLICY, humans_drift.parquet) or none"),
+         agent: str = typer.Option("mock", "--agent",
+                                   help="mock (policy oracle with 2% errors; offline) or cache (cached completions)"),
+         policy_update: str = typer.Option("", "--policy-update", help="Date the operator moves the agent to v2"),
+         record: Path | None = typer.Option(None, "--record", help="Output directory (default var/runs/L-…)"),
+         config: Path = ConfigOpt) -> None:
+    """Go-live simulation over the live split (master §17) from a replay run's ladder; makes no endpoint call."""
+    from .events import EventBus, Recorder
+    from .runs import Drift, LiveRun, PolicyUpdate, cached_agent, ladder_from_run, load_primary_humans, mock_agent
+    from .store import OutcomeStore
+
+    if drift not in ("policy", "none") or agent not in ("mock", "cache"):
+        console.print("live: --drift is policy|none and --agent is mock|cache")
+        raise typer.Exit(2)
+    root, cfg = _setup(config)
+    seed_dir = _run_dir(root, cfg, from_run, "live")
+    derived = root / cfg.paths.derived
+    cases_df = _typed_cases(root, cfg)
+    humans_df = pd.read_parquet(derived / "humans.parquet")
+    ladder, _ = ladder_from_run(seed_dir, cfg, cases_df, humans_df)
+    live_rows = cases_df[cases_df["split"] == "live"]
+    cases = sorted((case_from_record(r) for r in live_rows.to_dict("records")),
+                   key=lambda c: (c.contact_date, c.case_id))
+    humans_file = "humans_drift.parquet" if drift == "policy" else "humans.parquet"
+    humans = load_primary_humans(derived / humans_file, [c.case_id for c in cases])
+    seed_manifest_path = seed_dir / "manifest.json"
+    seed_manifest = json.loads(seed_manifest_path.read_text(encoding="utf-8")) if seed_manifest_path.exists() else {}
+    if agent == "mock":
+        decide, agent_label = mock_agent(cfg.seed), "mock-oracle-v1"
+    else:
+        key = seed_manifest.get("run_key")
+        if not key:
+            console.print(f"live: {seed_manifest_path} names no run_key for --agent cache")
+            raise typer.Exit(1)
+        decide, agent_label = cached_agent(OutcomeStore(root / cfg.paths.outcomes_db), key), f"cache:{key}"
+    scenario = None
+    if drift == "policy":
+        scenario = Drift("D-POLICY", cfg.policy.drift_date, {"policy_file": cfg.policy.drift_file,
+                                                             "changed_clauses": ["P1"]})
+    update = None
+    if policy_update:
+        if agent != "mock":
+            console.print("live: --policy-update needs --agent mock (no v2 completions are cached)")
+            raise typer.Exit(2)
+        update = PolicyUpdate(date.fromisoformat(policy_update), ("P1",), _sha256_file(root / cfg.policy.drift_file),
+                              "v2", mock_agent(cfg.seed, POLICY_V2))
+    runs_dir = root / cfg.paths.runs
+    out = record if record is not None else runs_dir / next_live_id(runs_dir, datetime.now(timezone.utc).date())
+    out.mkdir(parents=True, exist_ok=True)
+    note = ("offline under D-offline-gates, no endpoint call: a mock agent's figures describe the ladder mechanics, "
+            "not Gemma") if agent == "mock" else "cached completions only, no endpoint call"
+    manifest = {"run_id": out.name, "mode": "live", "seed_run": from_run, "seed_run_key": seed_manifest.get("run_key"),
+                "drift": "D-POLICY" if drift == "policy" else "D-NONE", "agent": agent_label,
+                "humans": humans_file, "policy_update": policy_update or None, "config_sha": config_sha(cfg),
+                "seed": cfg.seed, "cases": len(cases),
+                "first_date": cases[0].contact_date.isoformat() if cases else None,
+                "last_date": cases[-1].contact_date.isoformat() if cases else None, "note": note}
+    _write_json(out / "manifest.json", manifest)
+    bus = EventBus()
+    recorder = Recorder(out / "events.jsonl")
+    bus.add_sink(recorder)
+    try:
+        run = LiveRun(cfg, cases=cases, humans=humans, agent=decide, ladder=ladder, drift=scenario,
+                      policy_update=update, run_dir=out, bus=bus, run_id=out.name)
+        summary = run.run()
+    finally:
+        bus.remove_sink(recorder)
+        recorder.close()
+    summary.update(seed_run=from_run, agent=agent_label, humans=humans_file, drift_scenario=manifest["drift"])
+    _write_json(out / "summary.json", summary)
+    console.print(f"{out.name}: {summary['cases']} live cases over {summary['days']} days · agent {agent_label} · "
+                  f"{manifest['drift']} · observed {summary['observed']}, autonomous {summary['autonomous']}, "
+                  f"audited {summary['audited']}")
+    above = sum(v != "L0" for v in summary["levels_at_start"].values())
+    console.print(f"cells above L0 at go-live: {above} · promotions {len(summary['promotions'])} · "
+                  f"demotions {len(summary['demotions'])} · global alarm {summary['global_alarm']}")
+    for d in summary["demotions"]:
+        console.print(f"  demoted {d['cell']} {d['from']}→{d['to']} on {d['date']} after "
+                      f"{d['outcomes_monitored']} monitored outcomes")
+    console.print(f"record: {out}")
