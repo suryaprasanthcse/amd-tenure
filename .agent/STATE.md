@@ -1,6 +1,11 @@
 # STATE
-current_module:   T03   status: K2 APPLIED, replay frozen at 500 (R-20261015-01); gate G03 NOT RUN → Q8
-last_green_gate:  G02 (gates/G02.json, commit 981aa19; 200 tests, 0 failures, 0 skipped, 651 s, cumulative G00–G02,
+current_module:   T03   status: COMPLETE (G03 green against the mock, D-offline-gates; LIVE VERIFICATION PENDING) → next T04
+last_green_gate:  G03 (gates/G03.json, commit 93ee9e4; 219 tests, 0 failures, 0 skipped, 88 s, cumulative G00–G03,
+                  llm tests against the in-process MOCK endpoint under D-offline-gates: no live verification.
+                  LIVE VERIFICATION PENDING for pre-flight: re-run G03 (and later gates) live on a stable link,
+                  including test_replay_500_live with its < 1% error bound; its var/runs/T03-live500-* dirs from
+                  mock runs hold mock numbers and must not be quoted)
+                  G02: (gates/G02.json, commit 981aa19; 200 tests, 0 failures, 0 skipped, 651 s, cumulative G00–G02,
                   llm tests live on Token Factory behind the 30 RPM limiter; humans 100%, gold 99.2% coverage)
                   G01: gates/G01.json, commit b85cf6a, 184 tests live after the D-intake run.
 platform_facts:   S1: PASS (2026-10-15) → host=developer.amd.com.cn, model=Gemma-4-31B-IT, models_status=200,
@@ -70,7 +75,7 @@ runs:             R-20261015-01 (live, Token Factory, Gemma-4-31B-IT, run_key 3e
                       7 attempts; counted invalid and as disagreements, I5; not cached, I7)
                       attempts of the 483 stored completions: 1:294 · 2:101 · 3:34 · 4:26 · 5:12 · 6:11 · 7:5
                       var/outcomes.db holds 602 completions for this run_key (102 beyond case 500, uncommitted)
-open_questions:   1 (Q7 → D-rpm2 · Q3 → D-q3 · Q4 → D-replay · Q5 → D-intake · Q6 approved with D-intake)
+open_questions:   0 (Q8 → D-offline-gates · Q7 → D-rpm2 · Q3 → D-q3 · Q4 → D-replay · Q5 → D-intake · Q6 approved with D-intake)
                   Q7 (T03, 2026-10-15): the Token Factory now returns rate-limit headers that contradict D-rpm:
                       x-ratelimit-limit-user-rpm 20 (limiter sends 30) and x-ratelimit-limit-user-daily-usd 1
                       (used 0.029; a mostly-cached decider call costs ~1.2e-5 USD, so 3,000 cases ≈ 0.04 USD).
@@ -82,11 +87,15 @@ open_questions:   1 (Q7 → D-rpm2 · Q3 → D-q3 · Q4 → D-replay · Q5 → D
                       500 fresh live calls and asserts endpoint_calls == 500 and error_rate < 1%. The frozen run has
                       3.4% endpoint errors, and the human asked that no further live calls be made. Freezing the
                       500 as that test's evidence needs a test change (C4) and still fails its < 1% bound. Not run,
-                      not edited; gate(G03) not committed. Needs the human.
-resume_point:     T03 after Q8. Code, offline tests and K2 records are committed. Offline T03 tests use only the
-                  FakeLLM MockTransport (verified with TENURE_LLM_BASE_URL pointed at a dead port: 18 pass).
-                  Gate: `uv run python scripts/gate.py G03` runs every llm test live (G00/G01 + test_replay_500_live).
+                      not edited; gate(G03) not committed. RESOLVED → D-offline-gates (mock gates until a stable link; amended
+                      with a 5 ms mock round trip in tests/conftest.py, no assertion changed).
+resume_point:     T04 (statistics) in a fresh session. Gates run under D-offline-gates while off a stable link:
+                    TENURE_LLM_API_KEY=mock_key TENURE_LLM_BASE_URL=http://127.0.0.1:9/v1 uv run python scripts/gate.py G04
+                  T04's evaluation input is var/runs/R-20261015-01/decisions.jsonl (500 records incl. 17 invalid,
+                  which count as disagreements, I5); its manifest has no "finished" (killed under D-k2).
+                  Pre-flight (stable link, before G08 / 18 Oct freeze): re-run the gates live with .env values.
 module_table:     | module | gate | status | commit |
                   | T00 | G00 | green (live re-run: 45/45 pass) | ca580c2 (feat) |
                   | T01 | G01 | green live after intake (b85cf6a) | 3d09b72, 5e124f3, e7c5396, b85cf6a (feat) |
                   | T02 | G02 | green live (981aa19) | 981aa19 (feat) |
+                  | T03 | G03 | green MOCK (D-offline-gates), live pending | 7baaa54 (feat), 0b03a96 (D-rpm2), 93ee9e4 |

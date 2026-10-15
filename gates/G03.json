@@ -1,0 +1,36 @@
+{
+  "gate": "G03",
+  "module": "T03",
+  "status": "green",
+  "commit": "93ee9e4f3e1de7ebfabcffc8c6ccb37a2c02081a",
+  "utc": "2026-10-15T05:51:22+00:00",
+  "tests": {
+    "tests": 219,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "coverage": {
+    "__init__": 1.0,
+    "canonical": 0.975,
+    "cli": 0.2197,
+    "config": 1.0,
+    "domain": 1.0,
+    "events": 0.9744,
+    "gold": 0.9923,
+    "gpu": 0.9412,
+    "humans": 1.0,
+    "intake": 0.9752,
+    "llm": 0.9032,
+    "olist": 0.9904,
+    "policy": 0.9873,
+    "prompt": 1.0,
+    "ratelimit": 1.0,
+    "replay": 1.0,
+    "runs": 0.9467,
+    "schema": 0.9733,
+    "store": 0.9744
+  },
+  "forbidden": 0,
+  "problems": []
+}

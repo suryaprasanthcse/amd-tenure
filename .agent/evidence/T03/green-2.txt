@@ -1,0 +1,33 @@
+........................................................................ [ 32%]
+........................................................................ [ 65%]
+........................................................................ [ 98%]
+...                                                                      [100%]
+=============================== tests coverage ================================
+______________ coverage: platform win32, python 3.12.14-final-0 _______________
+
+Name                      Stmts   Miss  Cover   Missing
+-------------------------------------------------------
+src\tenure\canonical.py      40      1    98%   24
+src\tenure\cli.py           446    348    22%   66-68, 72, 76-80, 87-113, 121-122, 130-160, 166-195, 202-211, 221-226, 230, 235-236, 240, 246-256, 263-281, 286-297, 313-322, 328-343, 351-370, 376-381, 391-435, 443-458, 467-497, 530-534, 540-551, 560, 566-574, 581-600, 606-622, 632-635, 647-694
+src\tenure\events.py         78      2    97%   84-85
+src\tenure\gold.py          130      1    99%   49
+src\tenure\gpu.py            85      5    94%   28, 36, 51, 55, 70
+src\tenure\intake.py        161      4    98%   115-116, 195, 274
+src\tenure\llm.py            93      9    90%   47, 78-79, 90-93, 114-115
+src\tenure\olist.py         104      1    99%   65
+src\tenure\policy.py         79      1    99%   112
+src\tenure\runs.py          300     16    95%   113, 136, 139, 228-229, 273, 286-288, 292, 302, 368, 413, 429, 432, 434
+src\tenure\schema.py         75      2    97%   82-83
+src\tenure\store.py          39      1    97%   74
+-------------------------------------------------------
+TOTAL                      2082    391    81%
+
+7 files skipped due to complete coverage.
+Coverage JSON written to file C:\myspace\hacckathons\amd-tenure\var\gates\G03.cov.json
+219 passed in 87.61s (0:01:27)
+
+G03: GREEN
+
+NOTE (T03 green-2): gate G03 under D-offline-gates: TENURE_LLM_API_KEY=mock_key, TENURE_LLM_BASE_URL=http://127.0.0.1:9/v1 (dead port).
+llm tests ran against the in-process mock (5 ms simulated round trip): this does NOT verify the live endpoint.
+Live re-run of G03 (incl. test_replay_500_live, < 1% error bound) is pending for pre-flight on a stable link.
