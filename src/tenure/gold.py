@@ -1,8 +1,8 @@
 """Gold-set harness (master §15, decision D-intake): sampling, labelling, translation cache, raw agreement.
 
 The 300 gold cases are drawn from the D-intake gold pool (1,500 Gemma-labelled live cases), stratified by
-case_type. A person labels them with `tenure gold label`; `tenure gold eval` reports raw agreement until
-T04 adds Wilson-cc intervals.
+case_type. A person labels them with `tenure gold label`; `tenure gold eval` reports agreement with
+Wilson-cc intervals (master §3), overall and per case type.
 """
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from .domain import Action, CaseType, Resolution, unit_hash
 from .intake import case_from_record
 from .prompt import case_block
 from .schema import AgentDecision, agrees, eur_to_cents
+from .stats import wilson_cc_interval
 
 GOLD_N = 300
 LABEL_FIELDS: tuple[str, ...] = ("case_id", "labeler", "action", "amount_cents", "note", "utc")
@@ -169,3 +170,16 @@ def raw_agreement(gold: Mapping[str, Resolution], other: Mapping[str, Resolution
         cell[1] += 1
     total = (sum(v[0] for v in by_type.values()), sum(v[1] for v in by_type.values()))
     return {"overall": total, "by_type": {t: (v[0], v[1]) for t, v in sorted(by_type.items())}}
+
+
+def _interval(x: int, n: int) -> dict[str, Any]:
+    if n == 0:
+        return {"x": 0, "n": 0, "p_hat": None, "L_cc": None, "U_cc": None}
+    lo, hi = wilson_cc_interval(x, n)
+    return {"x": x, "n": n, "p_hat": x / n, "L_cc": lo, "U_cc": hi}
+
+
+def agreement_intervals(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """raw_agreement output with Wilson-cc 95% intervals, overall and per case type."""
+    return {"overall": _interval(*raw["overall"]),
+            "by_type": {t: _interval(x, n) for t, (x, n) in sorted(raw["by_type"].items())}}

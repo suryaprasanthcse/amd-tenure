@@ -1,5 +1,5 @@
 """TENURE command line: doctor, ingest, smoke (T00); intake, decide-sample, spike s2|s3 (T01); humans, gold (T02);
-replay (T03)."""
+replay (T03); evaluate (T04)."""
 from __future__ import annotations
 
 import asyncio
@@ -18,15 +18,18 @@ from typing import Any
 from urllib.parse import urlparse
 
 import httpx
+import numpy as np
 import pandas as pd
 import typer
 from rich.console import Console
 from rich.table import Table
 
+from .baselines import TRAIN_REPLAY, cell_baselines, pair_table
 from .canonical import fx
 from .config import TenureConfig, config_sha, endpoint, ingest_config, load, load_dotenv
-from .domain import Action, Case, CaseType, Resolution
-from .gold import TranslationCache, label_session, raw_agreement, read_labels, sample_gold
+from .cost import CostParams, cost_gate, error_components
+from .domain import Action, Case, CaseType, Level, Resolution
+from .gold import TranslationCache, agreement_intervals, label_session, raw_agreement, read_labels, sample_gold
 from .humans import PolicySchedule, label_case
 from .intake import (
     case_from_record,
@@ -47,7 +50,8 @@ from .olist import build_cases, load_tables
 from .policy import POLICY_V1, POLICY_V2
 from .prompt import case_block, messages, prompt_sha, static_block
 from .ratelimit import RateLimitedTransport, shared_limiter
-from .schema import DECISION_SCHEMA, Parsed, parse_decision
+from .schema import DECISION_SCHEMA, AgentDecision, Parsed, parse_decision
+from .stats import Z95, non_inferiority, wilson_cc_interval
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="TENURE: earned autonomy for refund agents.")
 console = Console()
@@ -602,7 +606,7 @@ def gold_label(labeler: str = typer.Option(..., "--labeler", help="Your name, st
 
 @gold_app.command("eval")
 def gold_eval(config: Path = ConfigOpt) -> None:
-    """Raw agreement with the gold labels: synthetic primary decisions (T04 adds Wilson-cc intervals)."""
+    """Agreement of the synthetic primary decisions with the gold labels, with Wilson-cc intervals (master §3)."""
     root, cfg = _setup(config)
     gdir = _gold_dir(root, cfg)
     gold_cases = pd.read_parquet(gdir / "gold_cases.parquet")
@@ -615,11 +619,16 @@ def gold_eval(config: Path = ConfigOpt) -> None:
                                         bool(r["primary_requires_return"]), r["primary_clause"])
                for r in hum.to_dict("records")}
     types = dict(zip(gold_cases["case_id"], gold_cases["case_type"]))
-    r = raw_agreement(labels, primary, types)
-    hit, n = r["overall"]
-    console.print(f"synthetic primary vs gold: {hit}/{n}" + (f" = {hit / n:.3f}" if n else ""))
-    for t, (h, m) in r["by_type"].items():
-        console.print(f"  {t}: {h}/{m}")
+    r = agreement_intervals(raw_agreement(labels, primary, types))
+
+    def line(v: dict[str, Any]) -> str:
+        if not v["n"]:
+            return "0/0"
+        return f"{v['x']}/{v['n']} = {v['p_hat']:.3f}, Wilson-cc 95% [{v['L_cc']:.4f}, {v['U_cc']:.4f}]"
+
+    console.print(f"synthetic primary vs gold: {line(r['overall'])}")
+    for t, v in r["by_type"].items():
+        console.print(f"  {t}: {line(v)}")
 
 
 # --- T03: replay ------------------------------------------------------------------------------------------------
@@ -692,3 +701,176 @@ def replay(split: str = typer.Option("replay", "--split"),
                   f"cached_ratio {m['cached_ratio']}, valid {m['valid_rate']}, agree {m['agree_rate']}, "
                   f"errors {m['errors']}")
     console.print(f"record: {run_dir}")
+
+
+# --- T04: statistical evaluation --------------------------------------------------------------------------------
+
+NOT_EVALUATED = ("DWELL", "MONITOR_POWER")  # ladder-state blockers: T05 (master §7.2)
+
+
+def _agent_from_payload(d: dict[str, Any] | None) -> AgentDecision | None:
+    if d is None:
+        return None
+    return AgentDecision(Action(d["action"]), d["amount_cents"], bool(d["requires_return"]), d["clause"],
+                         int(d["confidence_ppm"]), "")
+
+
+def _interval(x: int, n: int) -> dict[str, Any]:
+    lo, hi = wilson_cc_interval(x, n)
+    return {"n": n, "x": x, "p_hat": x / n, "L_cc": lo, "U_cc": hi}
+
+
+def evaluate_run(run_dir: Path, cfg: TenureConfig, cases: pd.DataFrame, humans: pd.DataFrame,
+                 sources: dict[str, str] | None = None) -> dict[str, Any]:
+    """Per-cell evidence for a replay run (master §3–§5): agreement with its Wilson-cc bounds, the human–human
+    baseline and scope, the NI threshold and blockers per level, and the cost mean, UCB and gate.
+
+    Invalid outputs stay in n as disagreements (I5). A run stopped before "finished" is evaluated on its
+    committed records. The report holds no timestamps, so equal inputs give equal bytes."""
+    run_id = run_dir.name
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    raw = (run_dir / "decisions.jsonl").read_bytes()
+    recs = [json.loads(line) for line in raw.decode("utf-8").splitlines() if line.strip()]
+    if not recs:
+        raise ValueError(f"{run_dir / 'decisions.jsonl'} holds no committed records")
+    foreign = [r["case_id"] for r in recs if r["run_id"] != run_id]
+    if foreign:
+        raise ValueError(f"{len(foreign)} records belong to another run (first: {foreign[0]})")
+    ids = {r["case_id"] for r in recs}
+    rows = cases[cases["case_id"].isin(ids)]
+    by_id = {str(rec["case_id"]): case_from_record(rec) for rec in rows.to_dict("records")}
+    hum = humans[humans["case_id"].isin(ids)]
+    primary = {str(r["case_id"]): Resolution(Action(r["primary_action"]),
+                                             None if pd.isna(r["primary_amount_cents"]) else int(r["primary_amount_cents"]),
+                                             bool(r["primary_requires_return"]), str(r["primary_clause"]))
+               for r in hum.to_dict("records")}
+    for r in recs:
+        cid = r["case_id"]
+        if cid not in by_id or cid not in primary:
+            raise ValueError(f"case {cid} of run {run_id} is missing from cases.parquet or humans.parquet")
+        h = primary[cid]
+        if h.action.value != r["human_action"] or h.amount_cents != r["human_amount_cents"]:
+            raise ValueError(f"humans.parquet no longer matches run {run_id} at case {cid}")
+
+    params = CostParams(**cfg.cost.model_dump())
+    table = pair_table(cases, humans, params, TRAIN_REPLAY, cfg.agreement.tol_abs_cents, cfg.agreement.tol_rel_bp)
+    lad = cfg.ladder
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for r in recs:
+        grouped.setdefault(r["cell"], []).append(r)
+
+    cells: dict[str, Any] = {}
+    for cell in sorted(grouped):
+        rs = grouped[cell]
+        n, x, valid = len(rs), sum(bool(r["agree"]) for r in rs), sum(bool(r["valid"]) for r in rs)
+        comps = np.asarray([error_components(_agent_from_payload(r["decision"]), primary[r["case_id"]],
+                                             by_id[r["case_id"]], params) for r in rs], dtype=float)
+        base, cbase = cell_baselines(table, cell, lad.baseline_n_min)
+        cg = cost_gate(comps, cbase.mean_cents, params, lad.bootstrap_b, (str(cfg.seed), cell, run_id, str(n)),
+                       lad.cost_eps_abs_cents, lad.cost_rho)
+        ceiling = lad.ceilings.get(cell.split("|", 1)[0], "L3")
+        levels: dict[str, Any] = {}
+        for name, g in sorted(lad.gates.items()):
+            ni = non_inferiority(x, n, base, g.delta)
+            ni_ok = ni.passed_strict if lad.ni_mode == "strict" else ni.passed
+            blockers = []
+            if Level[name] > Level[ceiling]:
+                blockers.append("CEILING")
+            if n < g.n_min:
+                blockers.append("N_MIN")
+            if valid / n < g.min_valid_rate:
+                blockers.append("VALID_RATE")
+            if not ni_ok:
+                blockers.append("NON_INFERIORITY")
+            if g.cost_gate and not cg.passed:
+                blockers.append("COST")
+            levels[name] = {"n_min": g.n_min, "delta": g.delta, "min_valid_rate": g.min_valid_rate,
+                            "threshold": ni.threshold, "ni_passed": ni.passed, "diff_lower": ni.diff_lower,
+                            "ni_passed_strict": ni.passed_strict,
+                            "cost_threshold_cents": cg.threshold if g.cost_gate else None,
+                            "cost_passed": cg.passed if g.cost_gate else None, "blockers": blockers}
+        cells[cell] = {**_interval(x, n), "valid": valid, "valid_rate": valid / n, "baseline": base.rate,
+                       "baseline_x": base.x, "baseline_n": base.n, "scope": base.scope, "ceiling": ceiling,
+                       "cost_mean_cents": cg.mean, "cost_ucb_cents": cg.ucb,
+                       "cost_components_mean": [float(v) for v in comps.mean(axis=0)],
+                       "cost_baseline_cents": cbase.mean_cents, "cost_baseline_n": cbase.n, "cost_scope": cbase.scope,
+                       "levels": levels}
+
+    summary: dict[str, Any] = {}
+    for name in sorted(lad.gates):
+        blocked: dict[str, int] = {}
+        for c in cells.values():
+            for b in c["levels"][name]["blockers"]:
+                blocked[b] = blocked.get(b, 0) + 1
+        summary[name] = {
+            "ni_pass": sorted(k for k, c in cells.items() if not set(c["levels"][name]["blockers"]) - {"COST"}),
+            "pass": sorted(k for k, c in cells.items() if not c["levels"][name]["blockers"]),
+            "blocked": dict(sorted(blocked.items()))}
+
+    by_source: dict[str, Any] = {}
+    if sources is not None:
+        tally: dict[str, list[int]] = {}
+        for r in recs:
+            t = tally.setdefault(sources.get(r["case_id"], "unknown"), [0, 0])
+            t[0] += int(bool(r["agree"]))
+            t[1] += 1
+        by_source = {k: _interval(v[0], v[1]) for k, v in sorted(tally.items())}
+
+    x_all = sum(bool(r["agree"]) for r in recs)
+    return {
+        "run_id": run_id, "run_key": manifest.get("run_key"), "split": manifest.get("split"),
+        "model": manifest.get("model"), "selection": manifest.get("selection"),
+        "records": len(recs), "planned_cases": manifest.get("cases"), "complete": "finished" in manifest,
+        "first_case_date": min(c.contact_date for c in by_id.values()).isoformat(),
+        "last_case_date": max(c.contact_date for c in by_id.values()).isoformat(),
+        "decisions_sha256": hashlib.sha256(raw).hexdigest(), "config_sha": config_sha(cfg),
+        "params": {"z": Z95, "baseline_n_min": lad.baseline_n_min, "ni_mode": lad.ni_mode,
+                   "bootstrap_b": lad.bootstrap_b, "cost_eps_abs_cents": lad.cost_eps_abs_cents,
+                   "cost_rho": lad.cost_rho, "cost": cfg.cost.model_dump(),
+                   "gates": {k: v.model_dump() for k, v in sorted(lad.gates.items())},
+                   "ceilings": dict(sorted(lad.ceilings.items())), "not_evaluated": list(NOT_EVALUATED)},
+        "baseline_pairs": {"splits": list(TRAIN_REPLAY), "pairs": table.pairs, "agree": table.agree,
+                           "cells": len(table.agreement)},
+        "overall": {**_interval(x_all, len(recs)), "valid": sum(bool(r["valid"]) for r in recs)},
+        "by_intake_source": by_source, "cells": cells, "summary": summary,
+    }
+
+
+@app.command()
+def evaluate(run: str = typer.Option(..., "--run", help="Run id: the directory var/runs/<run_id>"),
+             config: Path = ConfigOpt) -> None:
+    """Per-cell Wilson-cc, non-inferiority and cost evidence for a replay run → var/runs/<id>/evaluation.json."""
+    root, cfg = _setup(config)
+    run_dir = root / cfg.paths.runs / run
+    if not (run_dir / "decisions.jsonl").exists() or not (run_dir / "manifest.json").exists():
+        console.print(f"evaluate: no run at {run_dir} (needs manifest.json and decisions.jsonl)")
+        raise typer.Exit(1)
+    derived = root / cfg.paths.derived
+    cases = _typed_cases(root, cfg)
+    humans_df = pd.read_parquet(derived / "humans.parquet")
+    sources = None
+    if (derived / "intake.parquet").exists():
+        intake_df = pd.read_parquet(derived / "intake.parquet", columns=["case_id", "source"])
+        sources = dict(zip(intake_df["case_id"].astype(str), intake_df["source"].astype(str)))
+    report = evaluate_run(run_dir, cfg, cases, humans_df, sources)
+    out = run_dir / "evaluation.json"
+    tmp = out.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(report, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False) + "\n",
+                   encoding="utf-8", newline="\n")
+    tmp.replace(out)
+
+    o = report["overall"]
+    console.print(f"{report['run_id']}: {o['x']}/{o['n']} agree = {o['p_hat']:.3f} "
+                  f"[{o['L_cc']:.4f}, {o['U_cc']:.4f}], valid {o['valid']}/{o['n']}, "
+                  f"{'complete' if report['complete'] else 'stopped before finished'}")
+    table = Table("cell", "n", "x", "p_hat", "L_cc", "baseline (scope)", "L1", "L2", "L3", "cost mean/UCB ¢")
+    for cell, c in report["cells"].items():
+        marks = [", ".join(c["levels"][lv]["blockers"]) or "pass" for lv in ("L1", "L2", "L3")]
+        table.add_row(cell, str(c["n"]), str(c["x"]), f"{c['p_hat']:.3f}", f"{c['L_cc']:.3f}",
+                      f"{c['baseline']:.3f} ({c['scope']})", *marks,
+                      f"{c['cost_mean_cents']:.0f}/{c['cost_ucb_cents']:.0f}")
+    console.print(table)
+    for lv, s in report["summary"].items():
+        console.print(f"{lv}: NI pass {len(s['ni_pass'])}/{len(report['cells'])} cells {s['ni_pass']} · "
+                      f"blocked {s['blocked']}")
+    console.print(f"evaluation: {out}")
