@@ -1,0 +1,30 @@
+# T04 green-2 · gate G04 (cumulative G00-G04) under D-offline-gates: TENURE_LLM_API_KEY=mock_key TENURE_LLM_BASE_URL=http://127.0.0.1:9/v1 uv run python scripts/gate.py G04
+........................................................................ [ 26%]
+........................................................................ [ 53%]
+........................................................................ [ 80%]
+....................................................                     [100%]
+=============================== tests coverage ================================
+______________ coverage: platform win32, python 3.12.14-final-0 _______________
+
+Name                      Stmts   Miss  Cover   Missing
+-------------------------------------------------------
+src\tenure\canonical.py      40      1    98%   24
+src\tenure\cli.py           560    356    36%   76, 80-84, 91-117, 125-126, 134-164, 170-199, 206-215, 225-230, 234, 239-240, 244, 250-260, 267-285, 290-301, 317-326, 332-347, 355-374, 380-385, 395-439, 447-462, 471-501, 537, 544-555, 564, 570-578, 585-604, 610-631, 641-644, 656-703, 735, 738, 750, 753, 812-817, 853-854
+src\tenure\events.py         78      2    97%   84-85
+src\tenure\gold.py          138      1    99%   50
+src\tenure\gpu.py            85      5    94%   28, 36, 51, 55, 70
+src\tenure\intake.py        161      4    98%   115-116, 195, 274
+src\tenure\llm.py            93      9    90%   47, 78-79, 90-93, 114-115
+src\tenure\olist.py         104      1    99%   65
+src\tenure\policy.py         79      1    99%   112
+src\tenure\runs.py          300     16    95%   113, 136, 139, 228-229, 273, 286-288, 292, 302, 368, 413, 429, 432, 434
+src\tenure\schema.py         75      2    97%   82-83
+src\tenure\store.py          39      1    97%   74
+-------------------------------------------------------
+TOTAL                      2423    399    84%
+
+10 files skipped due to complete coverage.
+Coverage JSON written to file C:\myspace\hacckathons\amd-tenure\var\gates\G04.cov.json
+268 passed in 75.05s (0:01:15)
+
+G04: GREEN

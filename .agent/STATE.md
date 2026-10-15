@@ -1,6 +1,10 @@
 # STATE
-current_module:   T03   status: COMPLETE (G03 green against the mock, D-offline-gates; LIVE VERIFICATION PENDING) → next T04
-last_green_gate:  G03 (gates/G03.json, commit 93ee9e4; 219 tests, 0 failures, 0 skipped, 88 s, cumulative G00–G03,
+current_module:   T04   status: COMPLETE (G04 green against the mock, D-offline-gates; LIVE VERIFICATION PENDING) → next T05
+last_green_gate:  G04 (gates/G04.json, commit dfb94eb; 268 tests, 0 failures, 0 skipped, 75 s, cumulative G00–G04,
+                  llm tests against the in-process MOCK endpoint under D-offline-gates, no outbound HTTP:
+                  no live verification. Coverage stats 100%, cost 100%, baselines 100%, gold 99.3%.
+                  LIVE VERIFICATION PENDING for pre-flight, as for G03)
+                  G03: (gates/G03.json, commit 93ee9e4; 219 tests, 0 failures, 0 skipped, 88 s, cumulative G00–G03,
                   llm tests against the in-process MOCK endpoint under D-offline-gates: no live verification.
                   LIVE VERIFICATION PENDING for pre-flight: re-run G03 (and later gates) live on a stable link,
                   including test_replay_500_live with its < 1% error bound; its var/runs/T03-live500-* dirs from
@@ -75,6 +79,23 @@ runs:             R-20261015-01 (live, Token Factory, Gemma-4-31B-IT, run_key 3e
                       7 attempts; counted invalid and as disagreements, I5; not cached, I7)
                       attempts of the 483 stored completions: 1:294 · 2:101 · 3:34 · 4:26 · 5:12 · 6:11 · 7:5
                       var/outcomes.db holds 602 completions for this run_key (102 beyond case 500, uncommitted)
+evaluation:       R-20261015-01 (T04, `uv run tenure evaluate --run R-20261015-01` → var/runs/R-20261015-01/evaluation.json,
+                      decisions_sha256 e72d3564…c89b, complete=false: 500 of 3,000 planned, stopped under D-k2)
+                      overall 466/500 = 0.932, Wilson-cc 95% [0.9053, 0.9518], valid 483/500 (17 invalid = endpoint
+                      errors, counted as disagreements, I5) · by intake source: gemma 464/498, keywords 2/2
+                      hh baseline pairs (train+replay): 5,328 pairs, 4,934 agree, 55 cells; n_min 60, pooled per §4.2
+                      49 cells, only 2 with n ≥ 30 (POSITIVE|V1 139, POSITIVE|V2 130); 47 cells blocked by N_MIN at L1
+                      CELLS PASSING THE NI THRESHOLD AND n_min, ignoring dwell, monitoring power and cost:
+                        L1: POSITIVE|V1 (L_cc 0.8771 ≥ 0.9220 − 0.10) and POSITIVE|V2 (L_cc 0.8689 ≥ 0.9299 − 0.10)
+                        L2: none (POSITIVE|V1 clears the NI threshold 0.8720 but n 139 < 150; POSITIVE|V2 fails NI)
+                        L3: none
+                      With the valid-rate gate, NO cell passes any level: POSITIVE|V1 valid 135/139 = 0.971 and
+                      POSITIVE|V2 125/130 = 0.962 are < 0.98. Every one of their 9 invalids is an endpoint error over the
+                      mobile link (TRANSPORT/HTTP_429/TIMEOUT/HTTP_500), not a model output that failed to parse, so on a
+                      stable link both cells would probably clear L1 (not measured). Blocker counts L1: N_MIN 47,
+                      NON_INFERIORITY 47, VALID_RATE 9 · L2: N_MIN 49, NON_INFERIORITY 48, COST 9, VALID_RATE 9, CEILING 7
+                      · L3: N_MIN 49, NON_INFERIORITY 49, COST 9, VALID_RATE 9, CEILING 7. Cost (B 2,000, seed per cell,
+                      run_id, n): POSITIVE|V1 mean/UCB 11.5/23.0 ¢ vs hh 0.0 ¢ (threshold 50 ¢); POSITIVE|V2 15.4/30.8 ¢
 open_questions:   0 (Q8 → D-offline-gates · Q7 → D-rpm2 · Q3 → D-q3 · Q4 → D-replay · Q5 → D-intake · Q6 approved with D-intake)
                   Q7 (T03, 2026-10-15): the Token Factory now returns rate-limit headers that contradict D-rpm:
                       x-ratelimit-limit-user-rpm 20 (limiter sends 30) and x-ratelimit-limit-user-daily-usd 1
@@ -89,13 +110,17 @@ open_questions:   0 (Q8 → D-offline-gates · Q7 → D-rpm2 · Q3 → D-q3 · Q
                       500 as that test's evidence needs a test change (C4) and still fails its < 1% bound. Not run,
                       not edited; gate(G03) not committed. RESOLVED → D-offline-gates (mock gates until a stable link; amended
                       with a 5 ms mock round trip in tests/conftest.py, no assertion changed).
-resume_point:     T04 (statistics) in a fresh session. Gates run under D-offline-gates while off a stable link:
-                    TENURE_LLM_API_KEY=mock_key TENURE_LLM_BASE_URL=http://127.0.0.1:9/v1 uv run python scripts/gate.py G04
-                  T04's evaluation input is var/runs/R-20261015-01/decisions.jsonl (500 records incl. 17 invalid,
-                  which count as disagreements, I5); its manifest has no "finished" (killed under D-k2).
+resume_point:     T05 (ladder + CUSUM) in a fresh session. Gates run under D-offline-gates while off a stable link:
+                    TENURE_LLM_API_KEY=mock_key TENURE_LLM_BASE_URL=http://127.0.0.1:9/v1 uv run python scripts/gate.py G05
+                  T04 provides tenure.stats (R.7), tenure.cost (R.2), tenure.baselines (pair_table, cell_baselines) and
+                  cli.evaluate_run; evaluation.json blockers use the Appendix A codes (CEILING, N_MIN, VALID_RATE,
+                  NON_INFERIORITY, COST); DWELL and MONITOR_POWER are left to T05.
+                  Note for T05/T07: on the 500 frozen cases no cell passes any level (see evaluation), so a promotion
+                  demo needs more replay evidence (the rest of the slice on a stable link or the vLLM droplet).
                   Pre-flight (stable link, before G08 / 18 Oct freeze): re-run the gates live with .env values.
 module_table:     | module | gate | status | commit |
                   | T00 | G00 | green (live re-run: 45/45 pass) | ca580c2 (feat) |
                   | T01 | G01 | green live after intake (b85cf6a) | 3d09b72, 5e124f3, e7c5396, b85cf6a (feat) |
                   | T02 | G02 | green live (981aa19) | 981aa19 (feat) |
                   | T03 | G03 | green MOCK (D-offline-gates), live pending | 7baaa54 (feat), 0b03a96 (D-rpm2), 93ee9e4 |
+                  | T04 | G04 | green MOCK (D-offline-gates), live pending | 5474446 (test), dfb94eb (feat) |

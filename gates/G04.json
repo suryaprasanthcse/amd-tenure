@@ -1,0 +1,39 @@
+{
+  "gate": "G04",
+  "module": "T04",
+  "status": "green",
+  "commit": "dfb94eb935db3edc2fdd44acb71ac60ca5b931d5",
+  "utc": "2026-10-15T06:05:53+00:00",
+  "tests": {
+    "tests": 268,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "coverage": {
+    "__init__": 1.0,
+    "baselines": 1.0,
+    "canonical": 0.975,
+    "cli": 0.3643,
+    "config": 1.0,
+    "cost": 1.0,
+    "domain": 1.0,
+    "events": 0.9744,
+    "gold": 0.9928,
+    "gpu": 0.9412,
+    "humans": 1.0,
+    "intake": 0.9752,
+    "llm": 0.9032,
+    "olist": 0.9904,
+    "policy": 0.9873,
+    "prompt": 1.0,
+    "ratelimit": 1.0,
+    "replay": 1.0,
+    "runs": 0.9467,
+    "schema": 0.9733,
+    "stats": 1.0,
+    "store": 0.9744
+  },
+  "forbidden": 0,
+  "problems": []
+}
