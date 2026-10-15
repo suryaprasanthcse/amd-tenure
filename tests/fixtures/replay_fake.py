@@ -100,6 +100,8 @@ class FakeLLM:
         if int_hash("fake", c.case_id) % 5 == 0:  # a deterministic share of agent errors
             r = Resolution(Action.ESCALATE if r.action is not Action.ESCALATE else Action.REQUEST_INFO, None,
                            False, "E6" if r.action is not Action.ESCALATE else "I1")
+        elif r.action is Action.REFUND_PARTIAL and int_hash("amount", c.case_id) % 2 == 0:  # right action, wrong amount
+            r = Resolution(r.action, min(c.order_total_cents, 3 * (r.amount_cents or 1) + 500), False, r.clause)
         obj = {"rationale": f"Clause {r.clause} applies.", "policy_clause": r.clause, "action": r.action.value,
                "amount_eur": None if r.amount_cents is None else r.amount_cents / 100,
                "requires_return": r.requires_return, "confidence": 0.9}

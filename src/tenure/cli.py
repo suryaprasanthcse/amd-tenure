@@ -1,4 +1,5 @@
-"""TENURE command line: doctor, ingest, smoke (T00); intake, decide-sample, spike s2|s3 (T01); humans, gold (T02)."""
+"""TENURE command line: doctor, ingest, smoke (T00); intake, decide-sample, spike s2|s3 (T01); humans, gold (T02);
+replay (T03)."""
 from __future__ import annotations
 
 import asyncio
@@ -619,3 +620,75 @@ def gold_eval(config: Path = ConfigOpt) -> None:
     console.print(f"synthetic primary vs gold: {hit}/{n}" + (f" = {hit / n:.3f}" if n else ""))
     for t, (h, m) in r["by_type"].items():
         console.print(f"  {t}: {h}/{m}")
+
+
+# --- T03: replay ------------------------------------------------------------------------------------------------
+
+REPLAY_SELECTION = {"subset": "slice", "decision": "D-replay",
+                    "definition": "the 3,000 replay cases with the smallest unit_hash(seed, 'slice', case_id)"}
+
+
+def next_run_id(runs_dir: Path, today: date) -> str:
+    prefix = f"R-{today:%Y%m%d}-"
+    taken = [p.name for p in runs_dir.glob(prefix + "*")] if runs_dir.exists() else []
+    nums = [int(n[len(prefix):]) for n in taken if n[len(prefix):].isdigit()]
+    return f"{prefix}{max(nums, default=0) + 1:02d}"
+
+
+@app.command()
+def replay(split: str = typer.Option("replay", "--split"),
+           profile: str = typer.Option("", "--profile", help="Inference profile (default: tenure.yaml default)"),
+           record: Path | None = typer.Option(None, "--record", help="Run directory var/runs/<run_id>; reuse to resume"),
+           all_cases: bool = typer.Option(False, "--all", help="Every case of the split, not the D-replay slice"),
+           limit: int = typer.Option(0, "--limit", min=0, help="Only the first N cases in case order"),
+           adapter: str = typer.Option("", "--adapter", help="LoRA adapter model name served by vLLM"),
+           config: Path = ConfigOpt) -> None:
+    """Replay a split through the Gemma decider in case order, with events, cache and resumption (master §16)."""
+    from .events import EventBus
+    from .gpu import GpuPoller
+    from .runs import ReplayRun, load_primary_humans, load_replay_cases
+    from .store import OutcomeStore
+
+    root, cfg = _setup(config)
+    name = profile or cfg.inference.default_profile
+    prof, key = endpoint(cfg, profile=name)
+    if key == MOCK_API_KEY:
+        console.print("replay: PENDING → the API key is the mock key (D-llm-mock); set real TENURE_LLM_* values")
+        raise typer.Exit(2)
+    subset = None if all_cases or split != "replay" else "slice"
+    cases = load_replay_cases(root, cfg, split, subset=subset)
+    if limit:
+        cases = cases[:limit]
+    selection = dict(REPLAY_SELECTION) if subset else {"subset": None, "split": split}
+    if limit:
+        selection["first_n"] = limit
+    humans = load_primary_humans(root / cfg.paths.derived / "humans.parquet", [c.case_id for c in cases])
+    runs_dir = root / cfg.paths.runs
+    run_dir = record if record is not None else runs_dir / next_run_id(runs_dir, datetime.now(timezone.utc).date())
+    outcomes = root / cfg.paths.outcomes_db
+    outcomes.parent.mkdir(parents=True, exist_ok=True)
+    bus = EventBus()
+    total = len(cases)
+
+    def show(event: str, data: dict[str, Any]) -> None:
+        if event == "run":
+            console.print(f"{data['run_id']} {data['status']} · {data['model']} · {data['profile']}")
+        elif event == "progress" and (data["committed"] % 25 == 0 or data["committed"] == total):
+            cpm = None if data["cases_per_s"] is None else round(60 * data["cases_per_s"], 1)
+            console.print(f"  {data['committed']}/{total} · sim {data['sim_date']} · {cpm} cases/min · "
+                          f"p50 {data['p50_ms']} ms · errors {data['errors']}")
+
+    bus.add_sink(show)
+    gpu = GpuPoller(bus) if name == "vllm_droplet" else None
+    run = ReplayRun(cfg, name, split, adapter or None, root=root, cases=cases, humans=humans,
+                    store=OutcomeStore(outcomes), run_dir=run_dir, transport=limited_transport(cfg, prof), bus=bus,
+                    gpu=gpu, selection=selection)
+    console.print(f"replay {run.run_id}: {total} cases ({selection.get('subset') or split}), run_key {run.run_key}, "
+                  f"concurrency {run.concurrency}, rpm {cfg.inference.profiles[name].rpm}")
+    summary = asyncio.run(run.run())
+    m = summary["metrics"]
+    console.print(f"{run.run_id}: committed {summary['committed']} (resumed from {summary['resumed_from']}), "
+                  f"wall {m['wall_s']} s, {m['cases_per_min']} cases/min, compression {m['compression']}, "
+                  f"cached_ratio {m['cached_ratio']}, valid {m['valid_rate']}, agree {m['agree_rate']}, "
+                  f"errors {m['errors']}")
+    console.print(f"record: {run_dir}")
