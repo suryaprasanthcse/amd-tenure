@@ -1,5 +1,5 @@
 # STATE
-current_module:   T03   status: IN PROGRESS (test 0c17ad3, feat 7baaa54; non-live green; D-rpm2 applied) → live steps
+current_module:   T03   status: IN PROGRESS (test 0c17ad3, feat 7baaa54; non-live green; D-rpm2 applied) → PAUSED (human, 2026-10-15T02:3xZ, offline)
 last_green_gate:  G02 (gates/G02.json, commit 981aa19; 200 tests, 0 failures, 0 skipped, 651 s, cumulative G00–G02,
                   llm tests live on Token Factory behind the 30 RPM limiter; humans 100%, gold 99.2% coverage)
                   G01: gates/G01.json, commit b85cf6a, 184 tests live after the D-intake run.
@@ -67,12 +67,15 @@ open_questions:   0 (Q7 → D-rpm2 · Q3 → D-q3 · Q4 → D-replay · Q5 → D
                       so timeout_s 60 times out; the 3-case CLI smoke (var/runs/T03-cli-smoke) needed 6–7 attempts
                       per call. Proposed: rpm 20, timeout_s 180, token_factory concurrency 16 (≈ 20 RPM × 45 s / 60).
                       RESOLVED → D-rpm2 (rpm 20, timeout_s 180, concurrency 16; two assertions follow the yaml).
-resume_point:     T03: code and non-live tests green (7baaa54). Remaining: Q7 decision → tenure.yaml; live
-                  test_replay_500_live; `tenure replay --split replay --profile token_factory --record var/runs/<id>`
-                  on the 3k slice; gate G03; STATE run facts; DEVLOG; "gate(G03): green".
-                  Earlier note: T03 (replay engine) in a fresh session. Replay = the D-intake replay slice, 3,000 cases, live on
-                  Token Factory (D-replay, ~2.5 h at 30 RPM; one live process at a time, D-rpm). Decider mode
-                  vllm_structured/fold (D-mode, decided). Human task: gold labelling on 17 Oct.
+resume_point:     T03 PAUSED by the human (offline commute). Replay R-20261015-01 (3k D-replay slice, run_key
+                  3e10bf3e14f30d7e9409bb57) was stopped before its first tick: var/runs/R-20261015-01/ has manifest.json
+                  and events.jsonl but no decisions.jsonl, so it restarts at case 1 of 3,000; the 10 completions already
+                  in var/outcomes.db (WAL checkpointed) come back from the cache without endpoint calls. No process left.
+                  RESUME (one live process at a time, D-rpm2), from the repo root:
+                    uv run tenure replay --split replay --profile token_factory --record var/runs/R-20261015-01
+                  Same --record = same run_id: the manifest attempts list grows and events.jsonl t_ms continues.
+                  Then: uv run python scripts/gate.py G03 (includes live test_replay_500_live, ~25–30 min at 20 RPM);
+                  STATE run facts from var/runs/R-20261015-01/manifest.json "finished"; DEVLOG; commit "gate(G03): green".
 module_table:     | module | gate | status | commit |
                   | T00 | G00 | green (live re-run: 45/45 pass) | ca580c2 (feat) |
                   | T01 | G01 | green live after intake (b85cf6a) | 3d09b72, 5e124f3, e7c5396, b85cf6a (feat) |
