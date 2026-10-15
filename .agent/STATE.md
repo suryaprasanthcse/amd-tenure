@@ -1,7 +1,7 @@
 # STATE
-current_module:   T01   status: green LIVE (G01 re-run on the real endpoint, 5e20f29)
-last_green_gate:  G01 (gates/G01.json, commit 5e20f29; 178 tests, 0 failures, 0 skipped, 504 s, live Token Factory
-                  endpoint behind the 30 RPM limiter; ratelimit 100%, policy 98.7%, schema 97.3%, intake 97.1%)
+current_module:   T01   status: COMPLETE (G01 green live after intake, b85cf6a) → next T02
+last_green_gate:  G01 (gates/G01.json, commit b85cf6a; 184 tests, 0 failures, 0 skipped, 645 s, live Token Factory
+                  endpoint behind the 30 RPM limiter, after the full D-intake run)
                   G00 tests also pass live (45/45, .agent/evidence/T01/g00-live.txt); gates/G00.json keeps its original
                   record because gate.py G00 now trips on coverage of T01 modules, which G00 markers never exercise.
 platform_facts:   S1: PASS (2026-10-15) → host=developer.amd.com.cn, model=Gemma-4-31B-IT, models_status=200,
@@ -45,26 +45,12 @@ data_facts:       source: data/derived/ingest_manifest.json (config_sha cfe402a6
                       the Gemma-labelled slice. T04 should report results by intake source.
                   hh agreement: see T02
 runs:             –
-open_questions:   2 (Q3 resolved by D-q3; Q5 strategy decided by D-intake)
+open_questions:   1 (Q3 → D-q3; Q5 → D-intake; Q6 approved 2026-10-15: slice and gold-pool definitions)
                   Q4 (S2 fail → master §24 fallback): ~20 cases/min under 30 RPM. D-intake proposes the 3k hash slice
                      as option (a)'s live replay slice. Still open: pre-run the rest on the droplet, or replay only the slice.
-                  Q6 (D-intake definitions, blocks the intake run): approve (1) slice = 3,000 replay cases by
-                     unit_hash("20261018","slice",case_id) and (2) gold pool = 1,500 live cases by
-                     unit_hash("20261018","goldpool",case_id), from which T02 draws the 300 gold cases (amends §15).
-intake_plan:      (D-intake; runs only after Q6 is approved; never `intake --all` live on Token Factory)
-                  1. Code (T01 scope, tests first): intake.py `hash_sample(cases, split, tag, n, seed)`; CLI
-                     `tenure intake --subset slice|gold-pool` (Gemma on that subset only) and `tenure intake --keywords-rest`
-                     (keyword labels for every unlabelled case, no network). --keywords-rest refuses while either
-                     subset has unlabelled cases, so keyword labels can never be frozen onto a Gemma case.
-                  2. Live, one process at a time (shared 30 RPM): `--subset gold-pool` (1,500 calls) first, since T02
-                     needs it; then `--subset slice` (3,000 calls). 4,500 calls ≥ 2.5 h at the 30 RPM ceiling, ~3 h with
-                     the 429 retries S2 saw. Batches of 500 persist as they finish, so the run can stop at the daily
-                     spend cap and resume the next day. Intake prompts are short (~250 tokens + message, median 54
-                     chars), far below the ~2.9k-token decision prompt.
-                  3. `--keywords-rest` for the other 37,657 cases (local, seconds).
-                  4. Record here: case-type distribution by source, Gemma–keyword agreement per type on the 4,500
-                     (keyword_agreement), and any Gemma calls that fell back to keywords.
-resume_point:     Q6 approval → intake_plan steps 1–4 → T02. Answer Q4 before T03. D-mode still awaits approval.
+intake_plan:     done (see data_facts → intake). CLI: `tenure intake --subset gold-pool|slice`, `--keywords-rest`.
+resume_point:     T02 (synthetic team + gold harness). Gold sampling draws from the D-intake gold pool.
+                  Answer Q4 before T03. D-mode still awaits approval.
 module_table:     | module | gate | status | commit |
                   | T00 | G00 | green (live re-run: 45/45 pass) | ca580c2 (feat) |
-                  | T01 | G01 | green live (5e20f29); intake pending Q6 | 3d09b72, 5e124f3 (feat) |
+                  | T01 | G01 | green live after intake (b85cf6a) | 3d09b72, 5e124f3, e7c5396, b85cf6a (feat) |
