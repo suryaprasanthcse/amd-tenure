@@ -1,2 +1,4 @@
 # policy_sha = sha256(file bytes) (master §12.1) must not depend on the checkout platform (D-eol).
 policy/** text eol=lf
+# Exported ledgers are anchored by sha256 of their bytes (EXPORT path_sha, master §19.5): same rule as D-eol.
+exports/** text eol=lf
