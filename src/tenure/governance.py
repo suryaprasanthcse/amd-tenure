@@ -15,6 +15,7 @@ from typing import Any
 
 from .canonical import canonical_bytes
 from .ledger import GENESIS, Head, Ledger, VerifyReport, entry_hash
+from .stats import wilson_cc_interval
 
 
 def read_jsonl(path: str | Path) -> list[dict[str, Any]]:
@@ -69,21 +70,52 @@ def _evidence(ev: Mapping[str, Any]) -> str:
     return " · ".join(parts) or "–"
 
 
+def _num(v: Any) -> str:
+    return "–" if v is None else _md(v)
+
+
+def _bracket(ev: Mapping[str, Any]) -> str:
+    """Two-sided Wilson-cc 95% bracket of the agent's agreement, recomputed from x and n (the ledger stores only
+    the lower bound, which is checked against the recomputation)."""
+    if "x" not in ev or "n" not in ev or int(ev["n"]) <= 0:
+        return "–"
+    lo, hi = wilson_cc_interval(int(ev["x"]), int(ev["n"]))
+    if "lower" in ev and abs(float(ev["lower"]) - lo) > 1e-6:
+        return f"[{ev['lower']}, {hi:.6f}] (stored lower differs from recomputed {lo:.6f})"
+    return f"[{lo:.6f}, {hi:.6f}]"
+
+
+def _run_of(entries: Sequence[Mapping[str, Any]]) -> dict[int, str]:
+    """Entry seq -> its run: the latest RUN_STARTED at a lower seq (level changes and signals carry no run id)."""
+    out: dict[int, str] = {}
+    current = "–"
+    for e in entries:
+        if e["kind"] == "RUN_STARTED":
+            current = str(e["payload"].get("run_id", "–"))
+        out[int(e["seq"])] = current
+    return out
+
+
 def governance_report(entries: Sequence[Mapping[str, Any]], rep: VerifyReport,
                       final: Mapping[str, Mapping[str, Any]] | None = None, title: str = "Governance report",
-                      final_label: str = "") -> str:
+                      final_label: str = "", manifests: Mapping[str, Mapping[str, Any]] | None = None) -> str:
     """Markdown over exported ledger entries (dicts with seq, ts_utc, kind, actor, payload). `final` holds a
-    rebuilt ladder's cell summaries; `final_label` names the run they describe (the timelines cover every run)."""
+    rebuilt ladder's cell summaries; `final_label` names the run they describe (the timelines cover every run).
+    `manifests` maps run_id to its manifest.json, the source of the agent label when the entry carries none."""
+    manifests = manifests or {}
+    run_of = _run_of(entries)
     lines = [f"# {title}", "", verification_line(rep), ""]
     runs = [e for e in entries if e["kind"] in ("RUN_STARTED", "RUN_FINISHED")]
-    lines += ["## Runs", "", "| seq | kind | run | mode | model | run_key | cases / committed |", "|---|---|---|---|---|---|---|"]
+    lines += ["## Runs", "", "| seq | kind | run_id | mode | agent | model | run_key | cases / committed |",
+              "|---|---|---|---|---|---|---|---|"]
     for e in runs:
         p = e["payload"]
         size = p.get("committed", p.get("cases", "–"))
+        agent = p.get("agent") or manifests.get(str(p.get("run_id")), {}).get("agent") or p.get("model") or "–"
         lines.append(f"| {e['seq']} | {e['kind']} | {_md(p.get('run_id', '–'))} | {_md(p.get('mode', '–'))} | "
-                     f"{_md(p.get('model', '–'))} | {_md(p.get('run_key', '–'))} | {_md(size)} |")
+                     f"{_md(agent)} | {_md(p.get('model', '–'))} | {_md(p.get('run_key', '–'))} | {_md(size)} |")
     if not runs:
-        lines.append("| – | – | – | – | – | – | – |")
+        lines.append("| – | – | – | – | – | – | – | – |")
     other = [e for e in entries if e["kind"] in ("CONFIG", "POLICY_VERSION", "MODEL_PROFILE", "ADAPTER_REGISTERED",
                                                  "DRIFT_INJECTED", "GLOBAL_ALARM", "CASE_OVERRIDE", "EXPORT")]
     if other:
@@ -110,19 +142,25 @@ def governance_report(entries: Sequence[Mapping[str, Any]], rep: VerifyReport,
         rows = by_cell.get(cell, [])
         changes = [e for e in rows if e["kind"] == "LEVEL_CHANGE"]
         if changes:
-            lines += ["Level timeline:", "", "| seq | change | reason | evidence |", "|---|---|---|---|"]
+            lines += ["Level timeline (bracket = two-sided Wilson-cc 95% interval of agreement; threshold = human "
+                      "baseline − δ):", "",
+                      "| seq | run_id | change | reason | evidence | 95% bracket [lower, upper] | threshold | "
+                      "human baseline |", "|---|---|---|---|---|---|---|---|"]
             for e in changes:
                 p = e["payload"]
-                lines.append(f"| {e['seq']} | {p['from']} → {p['to']} | {p['reason']} | {_evidence(p['evidence'])} |")
+                ev = p["evidence"]
+                lines.append(f"| {e['seq']} | {_md(run_of[int(e['seq'])])} | {p['from']} → {p['to']} | {p['reason']} | "
+                             f"{_evidence(ev)} | {_bracket(ev)} | {_num(ev.get('threshold'))} | "
+                             f"{_num(ev.get('baseline'))} |")
             lines.append("")
         signals = [e for e in rows if e["kind"] == "CUSUM_SIGNAL"]
         if signals:
-            lines += ["CUSUM signals:", "", "| seq | level | S | h | outcomes monitored | change point |",
-                      "|---|---|---|---|---|---|"]
+            lines += ["CUSUM signals:", "", "| seq | run_id | level | S | h | outcomes monitored | change point |",
+                      "|---|---|---|---|---|---|---|"]
             for e in signals:
                 p = e["payload"]
-                lines.append(f"| {e['seq']} | {p['level']} | {p['s']} | {p['h']} | {p['outcomes_monitored']} | "
-                             f"{p['change_point_index']} |")
+                lines.append(f"| {e['seq']} | {_md(run_of[int(e['seq'])])} | {p['level']} | {p['s']} | {p['h']} | "
+                             f"{p['outcomes_monitored']} | {p['change_point_index']} |")
             lines.append("")
         overrides = [e for e in rows if e["kind"] == "OVERRIDE"]
         if overrides:
@@ -142,7 +180,8 @@ def governance_report(entries: Sequence[Mapping[str, Any]], rep: VerifyReport,
 
 
 def export(ledger: Ledger, out_dir: str | Path, final: Mapping[str, Mapping[str, Any]] | None = None,
-           actor: str = "system", final_label: str = "") -> VerifyReport:
+           actor: str = "system", final_label: str = "",
+           manifests: Mapping[str, Mapping[str, Any]] | None = None) -> VerifyReport:
     """Write ledger.jsonl, head.json and governance_report.md; on a verified ledger, append an EXPORT entry
     {path_sha, head_seq, head_hash} for the exported head (master §19.5)."""
     out = Path(out_dir)
@@ -152,7 +191,8 @@ def export(ledger: Ledger, out_dir: str | Path, final: Mapping[str, Mapping[str,
     (out / "head.json").write_text(json.dumps({"seq": head.seq, "hash": head.hash}) + "\n", encoding="utf-8",
                                    newline="\n")
     entries = read_jsonl(out / "ledger.jsonl")
-    (out / "governance_report.md").write_text(governance_report(entries, rep, final, final_label=final_label), encoding="utf-8", newline="\n")
+    (out / "governance_report.md").write_text(governance_report(entries, rep, final, final_label=final_label, manifests=manifests),
+                                                   encoding="utf-8", newline="\n")
     if rep.ok:
         path_sha = hashlib.sha256((out / "ledger.jsonl").read_bytes()).hexdigest()
         ledger.append("EXPORT", actor, {"path_sha": path_sha, "head_seq": head.seq, "head_hash": head.hash})

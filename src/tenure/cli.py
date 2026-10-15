@@ -1054,6 +1054,15 @@ def ledger_verify(config: Path = ConfigOpt) -> None:
         raise typer.Exit(1)
 
 
+def _run_manifests(root: Path, cfg: Any) -> dict[str, dict[str, Any]]:
+    """run_id -> manifest.json of every recorded run (the report takes the agent label from them)."""
+    found: dict[str, dict[str, Any]] = {}
+    for path in sorted((root / cfg.paths.runs).glob("*/manifest.json")):
+        m = json.loads(path.read_text(encoding="utf-8"))
+        found[str(m.get("run_id", path.parent.name))] = m
+    return found
+
+
 @ledger_app.command("export")
 def ledger_export(out: Path = typer.Option(..., "--out", help="Directory, e.g. exports/<run>/"),
                   run: str = typer.Option("", "--run", help="Replay run whose final ladder state the report lists"),
@@ -1074,7 +1083,7 @@ def ledger_export(out: Path = typer.Option(..., "--out", help="Directory, e.g. e
             rebuild_ladder(led, run, by_id, primary_resolutions(humans_df), ladder, cfg.ladder.tick_k)
             final = {cell: cell_summary(ladder, cell) for cell in sorted(ladder.cells)}
         label = f"ladder rebuilt from run {run}'s DECISION entries" if run else ""
-        rep = export(led, out, final, final_label=label)
+        rep = export(led, out, final, final_label=label, manifests=_run_manifests(root, cfg))
     finally:
         led.close()
     typer.echo(verification_line(rep))
