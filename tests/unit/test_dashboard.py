@@ -38,7 +38,7 @@ def test_fixture_final_levels_match_run_finished(data):
 
 def test_verify_sources_ok_on_committed_export():
     v = dash.verify_sources(db=dash.ROOT / "no-such.db")
-    assert v["ok"] and v["entries"] == v["head_seq"] == 532
+    assert v["ok"] and v["entries"] == v["head_seq"] == 1038
     assert v["sources"][1]["ok"] is None  # no local database: skipped, not failed
 
 
@@ -99,3 +99,13 @@ def test_cli_verify_and_static_page(tmp_path, capsys):
     assert dash.main(["--out", str(out)]) == 0 and out.stat().st_size > 20_000
     assert "ledger.db" not in out.read_text(encoding="utf-8")  # static page: committed export only
     assert [x["name"] for x in dash.verify_sources(db=None)["sources"]] == ["ledger.jsonl"]
+
+
+def test_telemetry_and_real_eval_come_from_recorded_runs(data):
+    t, r = data["telemetry"], data["real_eval"]
+    assert t["endpoint"]["model"] == "Gemma-4-31B-IT" and [x["concurrency"] for x in t["s2_spike"]] == [1, 4]
+    assert t["replay"]["committed"] == 500 and t["replay"]["endpoint_errors"] == 17 and "not reported" in t["gpu"]
+    assert (r["x"], r["n"], r["valid"]) == (482, 500, 500) and r["first_pass"]["x"] == 466
+    assert r["lower"] < r["x"] / r["n"] < r["upper"] and r["promoted"] == ["POSITIVE|V1", "POSITIVE|V2"]
+    html = dash.render_html(data, dash.verify_sources(db=None))
+    assert "AMD Token Factory telemetry" in html and "src/tenure/gpu.py" in html

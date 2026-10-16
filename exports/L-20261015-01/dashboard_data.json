@@ -1,4 +1,66 @@
 {
+ "telemetry": {
+  "endpoint": {
+   "host": "developer.amd.com.cn",
+   "model": "Gemma-4-31B-IT"
+  },
+  "s2_spike": [
+   {
+    "concurrency": 1,
+    "cases_per_min": 14.0,
+    "prompt_tok_s": 678.0,
+    "completion_tok_s": 17.1,
+    "p50_ms": 2570,
+    "p95_ms": 10864,
+    "cached_ratio": "0.9997",
+    "error_rate": "0.0000"
+   },
+   {
+    "concurrency": 4,
+    "cases_per_min": 19.5,
+    "prompt_tok_s": 947.3,
+    "completion_tok_s": 24.0,
+    "p50_ms": 8133,
+    "p95_ms": 32708,
+    "cached_ratio": "0.9997",
+    "error_rate": "0.0000"
+   }
+  ],
+  "replay": {
+   "run": "R-20261015-01",
+   "committed": 500,
+   "cases_per_hour": 552.1,
+   "prompt_tok_s": 431.3,
+   "completion_tok_s": 11.2,
+   "p50_ms": 74698,
+   "p95_ms": 220812,
+   "cached_ratio": 0.9312,
+   "endpoint_errors": 17
+  },
+  "gpu": "not reported: the Token Factory profile exposes no GPU counters (src/tenure/gpu.py polls rocm-smi/amd-smi only on the vllm_droplet profile)"
+ },
+ "real_eval": {
+  "run": "R-20261016-01",
+  "model": "Gemma-4-31B-IT",
+  "n": 500,
+  "x": 482,
+  "valid": 500,
+  "lower": 0.9426,
+  "upper": 0.9779,
+  "first_pass": {
+   "run": "R-20261015-01",
+   "n": 500,
+   "x": 466,
+   "valid": 483,
+   "lower": 0.9053,
+   "upper": 0.9518
+  },
+  "retried_endpoint_failures": 17,
+  "promoted": [
+   "POSITIVE|V1",
+   "POSITIVE|V2"
+  ]
+ },
  "run_id": "L-20261015-01",
  "agent": "mock-oracle-v1",
  "mock": true,

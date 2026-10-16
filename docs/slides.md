@@ -40,8 +40,8 @@ Gemma-4-31B-IT on the AMD Token Factory · AMD Developer Hackathon: ACT III · T
 
 # Verifiable by anyone
 - Hash-chained SHA-256 ledger of every decision, promotion and demotion.
-- `python -m tenure.dashboard verify`: 532 entries, head seq 532, re-checked offline.
-- Export and anchor: `exports/R-20261015-01/{ledger.jsonl,head.json}`.
+- `python -m tenure.dashboard verify`: 1,038 entries, head seq 1038, re-checked offline.
+- Export and anchor: `exports/R-20261016-01/{ledger.jsonl,head.json}`.
 
 ---
 
@@ -49,7 +49,7 @@ Gemma-4-31B-IT on the AMD Token Factory · AMD Developer Hackathon: ACT III · T
 
 | Layer | Figures |
 |---|---|
-| Real: Gemma-4-31B-IT on the AMD Token Factory | 466/500 agree (93.2%), 95% CI [0.905, 0.952], 3.4% endpoint errors. No cell above L0 |
+| Real: Gemma-4-31B-IT on the AMD Token Factory | 482/500 agree (96.4%), 95% CI [0.943, 0.978], 500/500 valid after retrying 17 endpoint failures (first pass 466/500). POSITIVE|V1 and POSITIVE|V2 promoted to L1 |
 | Simulated: 6,454 cases, 60 days, mock agent | Promotions, 3 CUSUM demotions: ladder mechanics, not model accuracy |
 | Assumed: priced with labelled assumptions | €7,494 human-only · €693 net saving · 45.1% offload per month |
 
@@ -59,6 +59,13 @@ Gemma-4-31B-IT on the AMD Token Factory · AMD Developer Hackathon: ACT III · T
 - Handling time 6.3 min, wage €22/h, error cost €25, GPU €2/h.
 - Net €693 per month; 45.1% of cases need no person after audits; mean resolution 49.4% faster.
 - Not a claim about real merchant economics.
+
+---
+
+# AMD Token Factory telemetry (measured)
+- Endpoint `developer.amd.com.cn`, Gemma-4-31B-IT, shared 20 requests/min limit.
+- Replay: 552 cases/h, 431 prompt tok/s, 11.2 completion tok/s, 93% prompt-cache hit, p50 74.7 s (queueing on the rate limit, mobile link).
+- S2 spike, concurrency 1: p50 2.6 s, p95 10.9 s. No GPU counters on this profile.
 
 ---
 

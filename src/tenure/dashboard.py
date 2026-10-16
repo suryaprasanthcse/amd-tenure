@@ -30,8 +30,10 @@ from .governance import read_jsonl, verify_jsonl
 from .ledger import Head
 
 ROOT = Path(__file__).resolve().parents[2]
-LEDGER = ROOT / "exports" / "R-20261015-01" / "ledger.jsonl"
-HEAD = ROOT / "exports" / "R-20261015-01" / "head.json"
+EXPORT_DIR = ROOT / "exports" / "R-20261016-01"  # full chain incl. the retry run; the earlier head (seq 532) is its prefix
+LEDGER = EXPORT_DIR / "ledger.jsonl"
+HEAD = EXPORT_DIR / "head.json"
+RETRY_RUN = "R-20261016-01"
 FIXTURE = ROOT / "exports" / "L-20261015-01" / "dashboard_data.json"
 LEDGER_DB = ROOT / "var" / "ledger.db"
 LEVELS = {"L0": 0, "L1": 1, "L2": 2, "L3": 3}
@@ -195,7 +197,32 @@ def build_fixture(run_dir: Path, spikes: Path, ledger: Path = LEDGER) -> dict[st
         w = _cusum_windows(by_cell[c], promos.get(c, []))
         if w:
             cusum[c] = {"windows": w, "ledger_signals": signals.get(c, [])}
+    sweep = [{k: x[k] for k in ("concurrency", "cases_per_min", "prompt_tok_s", "completion_tok_s", "p50_ms", "p95_ms",
+                                "cached_ratio", "error_rate")} for x in s2["sweep"]]
+    telemetry = {
+        "endpoint": {"host": s2["host"], "model": s2["model"]},
+        "s2_spike": sweep,
+        "replay": {"run": seed_id, "committed": last["committed"], "cases_per_hour": round(3600.0 * last["cases_per_s"], 1),
+                   "prompt_tok_s": round(last["prompt_tps"], 1), "completion_tok_s": round(last["completion_tps"], 1),
+                   "p50_ms": last["p50_ms"], "p95_ms": last["p95_ms"], "cached_ratio": round(last["cached_ratio"], 4),
+                   "endpoint_errors": last["errors"]},
+        "gpu": "not reported: the Token Factory profile exposes no GPU counters (src/tenure/gpu.py polls rocm-smi/amd-smi "
+               "only on the vllm_droplet profile)",
+    }
+    retry = json.loads((run_dir.parent / RETRY_RUN / "evaluation.json").read_text(encoding="utf-8"))["overall"]
+    state = json.loads((run_dir.parent / RETRY_RUN / "ladder_state.json").read_text(encoding="utf-8"))
+    cells_state = state.get("cells", state)
+    first = json.loads((run_dir.parent / seed_id / "evaluation.json").read_text(encoding="utf-8"))["overall"]
+    real_eval = {
+        "run": RETRY_RUN, "model": s2["model"], "n": retry["n"], "x": retry["x"], "valid": retry["valid"],
+        "lower": round(retry["L_cc"], 4), "upper": round(retry["U_cc"], 4),
+        "first_pass": {"run": seed_id, "n": first["n"], "x": first["x"], "valid": first["valid"],
+                       "lower": round(first["L_cc"], 4), "upper": round(first["U_cc"], 4)},
+        "retried_endpoint_failures": first["n"] - first["valid"],
+        "promoted": sorted(c for c, v in cells_state.items() if (v.get("level") if isinstance(v, dict) else v) in ("L1", "L2", "L3", 1, 2, 3)),
+    }
     return {
+        "telemetry": telemetry, "real_eval": real_eval,
         "run_id": manifest["run_id"], "agent": manifest["agent"], "mock": manifest["agent"].startswith("mock"),
         "drift": summary["drift"], "days": days, "cells": cells, "levels": levels, "cusum": cusum,
         "demotions": summary["demotions"],
@@ -315,6 +342,7 @@ label{display:block;font-size:13px;color:var(--mut)}select{font:inherit;padding:
 <div class="card"><h2>Autonomy ladder timeline</h2><div id="timeline"></div></div>
 <div class="card"><h2>CUSUM drift detection <span class="mut small">S against threshold h</span></h2>
 <label>Cell <select id="cusumcell"></select></label><div id="cusum"></div><div class="small mut" id="cusumnote"></div></div>
+<div class="card"><h2>AMD Token Factory telemetry <span class="mut small">measured, shared rate-limited endpoint</span></h2><div id="telemetry"></div></div>
 <div class="card"><h2>Business impact calculator <span class="tag">ASSUMPTIONS</span></h2>
 <div class="small mut" id="impactnote"></div><div class="kpis" id="kpis"></div><div class="grid2" id="sliders"></div>
 <div class="small mut" id="assume"></div></div>
@@ -324,7 +352,7 @@ label{display:block;font-size:13px;color:var(--mut)}select{font:inherit;padding:
 const P=JSON.parse(document.getElementById('payload').textContent),D=P.data,$=id=>document.getElementById(id);
 const fmt=(x,d=0)=>Number(x).toLocaleString('en-GB',{minimumFractionDigits:d,maximumFractionDigits:d});
 const el=(t,a={},h='')=>{const e=document.createElement(t);for(const k in a)e.setAttribute(k,a[k]);e.innerHTML=h;return e};
-$('banner').innerHTML='<b>Read this first.</b> The ladder and drift views below are the <b>'+D.agent+'</b> agent (a policy oracle with 2% deterministic errors) on 6,454 held-out cases under the D-POLICY drift scenario. They show how autonomy is earned and lost. They are <b>not</b> a Gemma accuracy result. On Gemma-4-31B-IT the real 500-case replay (466/500 agree, Wilson 95% [0.905, 0.952]) promoted no cell above L0.';
+const R=D.real_eval;$('banner').innerHTML='<b>Read this first.</b> The ladder and drift views below are the <b>'+D.agent+'</b> agent (a policy oracle with 2% deterministic errors) on 6,454 held-out cases under the D-POLICY drift scenario. They show how autonomy is earned and lost. They are <b>not</b> a Gemma accuracy result. <b>Real model result:</b> '+R.model+' on the AMD Token Factory agreed with the human decision on '+R.x+'/'+R.n+' held-out cases (Wilson 95% ['+R.lower+', '+R.upper+'], '+R.valid+'/'+R.n+' valid) after '+R.retried_endpoint_failures+' endpoint failures from the first pass ('+R.first_pass.x+'/'+R.first_pass.n+') were retried; the ladder promoted '+R.promoted.join(' and ')+' to L1.';
 function renderBadge(v){const ok=v.ok;let h='<span class="badge '+(ok?'ok':'fail')+'">'+(ok?'✔ VERIFIED':'✖ FAILED')+' · '+v.entries+' entries · head seq '+v.head_seq+'</span> <code class="small">'+v.head_hash+'</code><ul class="small">';
  for(const s of v.sources)h+='<li><b>'+s.name+'</b>: '+(s.ok===null?'<span class="mut">':s.ok?'<span class="ok">':'<span class="fail">')+s.detail+'</span></li>';
  h+='</ul>';if(P.served)h+='<button id="re">Re-verify now</button>';else h+='<span class="small mut">Static page: checked when generated. Run <code>python -m tenure.dashboard</code> to re-verify live.</span>';
@@ -364,6 +392,10 @@ function cusum(){const c=$('cusumcell').value,e=D.cusum[c];if(!e){return}const W
  $('cusumnote').innerHTML=ws.map((w,k)=>'Window '+(k+1)+': from '+w.start+', level '+w.level+', p0 '+w.p0+' → p1 '+w.p1+', '+w.trace.length+' outcomes'+(w.signal?', <b class="fail">signal</b>':', no signal')).join(' · ')+
   (e.ledger_signals.length?'<br>Ledger CUSUM_SIGNAL entries: '+e.ledger_signals.map(s=>'seq '+s.seq+' (S '+s.s+' ≥ h '+s.h+', n '+s.n+')').join('; '):'')}
 $('cusumcell').onchange=cusum;cusum();
+// telemetry
+(function(){const T=D.telemetry,r=T.replay;let h='<div class="small mut">Endpoint <b>'+T.endpoint.host+'</b> · model <b>'+T.endpoint.model+'</b>. Shared 20 requests/min limit and a daily spend cap: these are not capacity figures.</div><table class="heat" style="margin-top:8px"><tr><th>Measurement</th><th>Cases/h</th><th>Prompt tok/s</th><th>Completion tok/s</th><th>p50 latency</th><th>p95 latency</th></tr>';
+ for(const x of T.s2_spike)h+='<tr><th>S2 throughput spike, concurrency '+x.concurrency+'</th><td>'+fmt(x.cases_per_min*60)+'</td><td>'+fmt(x.prompt_tok_s)+'</td><td>'+fmt(x.completion_tok_s,1)+'</td><td>'+fmt(x.p50_ms/1000,1)+' s</td><td>'+fmt(x.p95_ms/1000,1)+' s</td></tr>';
+ h+='<tr><th>Replay '+r.run+', '+r.committed+' cases</th><td>'+fmt(r.cases_per_hour)+'</td><td>'+fmt(r.prompt_tok_s)+'</td><td>'+fmt(r.completion_tok_s,1)+'</td><td>'+fmt(r.p50_ms/1000,1)+' s</td><td>'+fmt(r.p95_ms/1000,1)+' s</td></tr></table><div class="small mut">Prompt cache hit '+fmt(r.cached_ratio*100,1)+'% in the replay. Replay latency includes queueing behind the rate limit and a mobile link. GPU counters: '+T.gpu+'.</div>';$('telemetry').innerHTML=h})();
 // impact (same formula as tenure.dashboard.impact)
 const I=D.impact_inputs,A={...P.assumptions};
 function impact(a){const sc=30/I.days,V=I.cases*sc,Au=I.autonomous*sc,Ad=I.audited*sc,er=1-I.observed_agree/I.observed,hs=a.handle_minutes*60;

@@ -147,6 +147,9 @@ ledger (T06):     var/ledger.db (tenure.yaml paths.ledger_db), one hash-chained 
                       head.json, governance_report.md and ledger.jsonl are all committed.
                       ledger.jsonl is TRACKED: committed at 0736bc2 (D-eol-exports) and anchored by head.json (seq 532 · 9202839f…4abda), so
                       anyone can re-verify it standalone (`python -m tenure.dashboard verify`).
+retry (D-retry): R-20261016-01 = fresh replay of the first 500 cases, 17 endpoint calls (rest cached): 482/500 agree (0.964), Wilson-cc 95% [0.9426, 0.9779],
+                  valid 500/500; ladder (unchanged gates) → POSITIVE|V1, POSITIVE|V2 at L1, none at L2. Ledger head seq 1038 · e90a05f7…c9084, exported to
+                  exports/R-20261016-01/ (the R-20261015-01 export, head 532, is its prefix; the dashboard now verifies the new export).
 open_questions:   0 (Q9 → D-q9)
                   Q9 (T05, resolved 2026-10-15 → D-q9): P1 caps DELAY only, per master §1.1; no code or test change.
                   Earlier, all resolved (Q8 → D-offline-gates · Q7 → D-rpm2 · Q3 → D-q3 · Q4 → D-replay · Q5 → D-intake · Q6 approved with D-intake)

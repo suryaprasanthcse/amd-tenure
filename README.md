@@ -10,7 +10,7 @@ TENURE lets an AI refund agent earn autonomy one cell (case type × order-value 
 
 | Layer | What it is | Figures | Status |
 |---|---|---|---|
-| **Real model evaluation** | Gemma-4-31B-IT on the AMD Token Factory (`developer.amd.com.cn`), replayed over held-out Olist cases against the human decision | 500 held-out cases · 466 agreements (93.2%) · Wilson 95% CI [0.905, 0.952] · 3.4% endpoint errors (17/500, counted as disagreements) | Measured. No cell earned more than L0 on this evidence |
+| **Real model evaluation** | Gemma-4-31B-IT on the AMD Token Factory (`developer.amd.com.cn`), replayed over held-out Olist cases against the human decision | 500 held-out cases · 482 agreements (96.4%) · Wilson 95% CI [0.943, 0.978] · 500/500 valid. The first pass (`R-20261015-01`) had 466/500 (93.2%) with 17 endpoint failures (3.4%, mobile link), counted as disagreements; the 17 were retried (`R-20261016-01`, same model and prompt, 483 completions reused from the cache) | Measured. The ladder, gates unchanged, promoted POSITIVE\|V1 and POSITIVE\|V2 to L1 (n 139 and 130). Nothing reaches L2 (N_MIN, DWELL) |
 | **Longitudinal drift replay** | 6,454 synthetic-human cases over 60 days with an injected policy change, run with the `mock-oracle-v1` agent (a policy oracle with 2% deterministic errors), not Gemma | Cells promote L0 → L1 → L2, and CUSUM demotes 3 cells automatically (S above h) | Simulated. Shows the ladder mechanics, not model accuracy |
 | **Business assumptions** | The replay's volumes priced with labelled, adjustable assumptions (D-assume) | Human-only handling cost €7,494 per month · net saving €693 per month · 45.1% of cases need no person after audits | Assumed. The team's own practice priced with assumptions, not real merchant economics |
 
@@ -36,7 +36,7 @@ It takes a few minutes. The tests that call the real Token Factory endpoint are 
 
 | Panel | Source |
 |---|---|
-| Verification badge | recomputes the hash chain of `exports/R-20261015-01/ledger.jsonl` against `head.json` (seq 532); a local `var/ledger.db`, if present, is checked too |
+| Verification badge | recomputes the hash chain of `exports/R-20261016-01/ledger.jsonl` against `head.json` (seq 1038; the earlier export `exports/R-20261015-01/`, head seq 532, is its prefix); a local `var/ledger.db`, if present, is checked too |
 | Cell heat map and ladder timeline | `exports/L-20261015-01/dashboard_data.json`, the recorded live D-POLICY run |
 | CUSUM curves (S against h) | the same fixture; the re-run monitors reproduce the 3 `CUSUM_SIGNAL` entries in the ledger exactly |
 | Business impact | the fixture's run volumes, scaled to 30 days, priced with labelled, adjustable assumptions (D-assume) |
@@ -44,7 +44,7 @@ It takes a few minutes. The tests that call the real Token Factory endpoint are 
 **Read this before quoting a number.** The ladder, drift and impact views come from the `mock-oracle-v1` agent (a policy
 oracle with 2% deterministic errors), because the gates ran offline under D-offline-gates. They show how autonomy is
 earned and lost, not how accurate Gemma is. On Gemma-4-31B-IT, the real 500-case replay agrees with the human
-decision on 466/500 cases (Wilson 95% [0.905, 0.952]), and no cell earned more than L0 on that evidence. The business
+decision on 482/500 cases (Wilson 95% [0.943, 0.978]) once 17 endpoint failures were retried, and POSITIVE|V1 and POSITIVE|V2 reached L1 on that evidence. The business
 panel is the team's own practice priced with assumptions, not real merchant economics.
 
 Regenerating the fixture needs the local run data (`var/runs/`, not committed): `uv run python -m tenure.dashboard build`.
