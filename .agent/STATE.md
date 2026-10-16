@@ -1,5 +1,6 @@
 # STATE
-current_module:   T06   status: COMPLETE (G06 green against the mock, D-offline-gates; LIVE VERIFICATION PENDING) → next T07
+current_module:   T07   status: RECORDED DASHBOARD DELIVERED (no G07 gate; recorded mode only, K3 scope, D-deadline); T08 packaging partial
+                  T06: COMPLETE (G06 green against the mock, D-offline-gates; LIVE VERIFICATION PENDING)
 last_green_gate:  G06 (gates/G06.json, commit e424da1 + the gate commit; 344 tests, 0 failures, 0 skipped, 146 s,
                   cumulative G00–G06, mock endpoint under D-offline-gates, no outbound HTTP; env OPENBLAS/OMP/MKL_NUM_THREADS=1,
                   PYTHONIOENCODING=utf-8. Coverage ledger 99.0%, governance 89.6%, runs 92.2%. LIVE VERIFICATION PENDING)
@@ -143,8 +144,9 @@ ledger (T06):     var/ledger.db (tenure.yaml paths.ledger_db), one hash-chained 
                       appended EXPORT at seq 532; the report was then re-exported with labelled final-state lines, so
                       head.json = seq 532 · 9202839f346a9a7011b10ef1364e5e38dcb9464562e3ca9424a6ca5b04c4abda (the ledger
                       head is now 533 with that second EXPORT). verify_jsonl re-verifies the export standalone.
-                      head.json and governance_report.md are committed; ledger.jsonl holds derived case decisions and stays
-                      out of git like data/derived (whether to ship it for §19.6 anchoring is a T08 packaging call).
+                      head.json, governance_report.md and ledger.jsonl are all committed.
+                      ledger.jsonl is TRACKED: committed at 0736bc2 (D-eol-exports) and anchored by head.json (seq 532 · 9202839f…4abda), so
+                      anyone can re-verify it standalone (`python -m tenure.dashboard verify`).
 open_questions:   0 (Q9 → D-q9)
                   Q9 (T05, resolved 2026-10-15 → D-q9): P1 caps DELAY only, per master §1.1; no code or test change.
                   Earlier, all resolved (Q8 → D-offline-gates · Q7 → D-rpm2 · Q3 → D-q3 · Q4 → D-replay · Q5 → D-intake · Q6 approved with D-intake)
@@ -161,7 +163,9 @@ open_questions:   0 (Q9 → D-q9)
                       500 as that test's evidence needs a test change (C4) and still fails its < 1% bound. Not run,
                       not edited; gate(G03) not committed. RESOLVED → D-offline-gates (mock gates until a stable link; amended
                       with a 5 ms mock round trip in tests/conftest.py, no assertion changed).
-resume_point:     T07 (business impact + dashboard), offline under D-offline-gates. The ledger, its export and the governance
+resume_point:     T07 recorded dashboard done (`python -m tenure.dashboard`, exports/L-20261015-01/dashboard_data.json); remaining: T08 (video script,
+                  slides, cover, public repo and URL, submission) before the 18 Oct 12:00 IST freeze; hard deadline 18 Oct 15:30 IST (D-deadline).
+                  Previous: T07 planning (business impact + dashboard), offline under D-offline-gates. The ledger, its export and the governance
                   report exist for R-20261015-01 and L-20261015-01; replay writes the ledger by default, `tenure live`
                   only with --ledger. No further live replay batches (D-demo).
                   Previous: T06 (ledger), offline under D-offline-gates.

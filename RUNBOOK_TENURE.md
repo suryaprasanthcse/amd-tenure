@@ -8,7 +8,7 @@
 | Target agent | Claude Opus 5.5 (`claude-opus-5-5`) in Claude Code, high effort. **One fresh session per module** |
 | Harness | uv + pytest + pytest-cov + hypothesis; `scripts/gate.py` (cumulative gates, verified in §3.4) |
 | Budget | **42 human hours** on the critical path (T00–T08). Optional lanes: TX1 (LoRA, ~3 h human + GPU wall time) and TX2 (Evolus, 6–8 h) |
-| Deadline | lablab.ai submission closes **18 Oct 2026, 20:30 IST**. This plan submits at **18:00 IST** |
+| Deadline | lablab.ai submission closes **18 Oct 2026, 15:30 IST** (checked on the event page 2026-10-16; the earlier 20:30 was wrong). Feature freeze and submission target: **12:00 IST** (D-deadline). Track 3: Reinvent Commerce |
 | Driver | Manual: paste one module block per session. ORRERY-Lite's parser is specific to RUNBOOK_A (module IDs `A\d{2}`), so it cannot drive this file without a parser patch, which is not worth building in this window |
 
 ---
@@ -47,7 +47,7 @@
 | T07 | Business engine, API with SSE, dashboard, recorded bundle | 9.0 h | 16 Oct 20:30 – 23:30, then 17 Oct 09:00 – 15:00 |
 | Human | Label the 300 gold cases | 2.5 h | 17 Oct 15:30 – 18:00 |
 | T08 | Deployment, public URL, README, video script, slides, submission | 6.0 h | 17 Oct 19:00 – 22:00, then 18 Oct 09:00 – 12:00 |
-| Human | Feature freeze 12:00; record the video; slides PDF; submit | 4.0 h | 18 Oct 12:00 – 18:00 IST |
+| Human | Feature freeze 12:00; record the video; slides PDF; submit | 3.0 h | 17 Oct evening, submit by 18 Oct 12:00 IST (hard stop 15:30) |
 | **Total** | | **≈ 48.5 h** (42 h of modules + 6.5 h of human tasks) | |
 
 ## 2. Agent operating contract (T00 saves this verbatim as `.agent/CONTRACT.md`)
@@ -918,7 +918,7 @@ Tag v-submission. STATE final. DEVLOG. Commit "gate(G08): green".
 
 HUMAN TASKS (not delegable)
 Record the video (≤ 5 min, MP4 < 300 MB) from docs/video_script.md; export the slides PDF; fill in
-and submit the lablab form by 18 Oct 18:00 IST; post the ledger head hash in the submission description.
+and submit the lablab form by 18 Oct 12:00 IST (hard stop 15:30 IST); post the ledger head hash in the submission description.
 OUT OF SCOPE: new features after the 12:00 freeze.
 ```
 
@@ -966,7 +966,7 @@ Tests: contract tests against recorded Evolus responses; never commit Evolus key
 | K2 | Replay < 750 cases/min | Replay a stratified 5k-case slice live; pre-record the full run; the video shows both |
 | K3 | G07 not green by 17 Oct 18:00 | Recorded-mode dashboard only (T07 block) |
 | K4 | TX1 not evaluated by 17 Oct 20:00 | Retrieval-v2 or base only |
-| K5 | 18 Oct 12:00 IST | **Feature freeze**, whatever the state. Only video, slides and submission after this |
+| K5 | 18 Oct 12:00 IST | **Feature freeze and submission target**, whatever the state (the lablab deadline is 15:30 IST, so 12:00 keeps a 3.5 h margin). Only video, slides and submission after this |
 
 ## 8. Data staging (Task 1, human-run, before T00)
 
