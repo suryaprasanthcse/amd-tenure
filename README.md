@@ -1,10 +1,21 @@
 # TENURE
 
-Earned autonomy for customer-resolution agents on AMD Instinct and Gemma.
+Earned autonomy for customer-resolution agents powered by Gemma-4-31B-IT on the AMD Token Factory.
 
 TENURE lets an AI refund agent earn autonomy one cell (case type × order-value band) at a time. A cell is promoted only when statistics show the agent is as consistent as the human team. The agent demotes itself when it drifts, and every decision is recorded in a hash-chained ledger. The design is in [`TENURE_master_blueprint.md`](TENURE_master_blueprint.md) and the build plan is in [`RUNBOOK_TENURE.md`](RUNBOOK_TENURE.md).
 
 > Status: under construction for the AMD Developer Hackathon: ACT III (lablab.ai). Later sections are filled in from measured results as the build progresses.
+
+## What is measured, what is simulated, what is assumed
+
+| Layer | What it is | Figures | Status |
+|---|---|---|---|
+| **Real model evaluation** | Gemma-4-31B-IT on the AMD Token Factory (`developer.amd.com.cn`), replayed over held-out Olist cases against the human decision | 500 held-out cases · 466 agreements (93.2%) · Wilson 95% CI [0.905, 0.952] · 3.4% endpoint errors (17/500, counted as disagreements) | Measured. No cell earned more than L0 on this evidence |
+| **Longitudinal drift replay** | 6,454 synthetic-human cases over 60 days with an injected policy change, run with the `mock-oracle-v1` agent (a policy oracle with 2% deterministic errors), not Gemma | Cells promote L0 → L1 → L2, and CUSUM demotes 3 cells automatically (S above h) | Simulated. Shows the ladder mechanics, not model accuracy |
+| **Business assumptions** | The replay's volumes priced with labelled, adjustable assumptions (D-assume) | Human-only handling cost €7,494 per month · net saving €693 per month · 45.1% of cases need no person after audits | Assumed. The team's own practice priced with assumptions, not real merchant economics |
+
+AMD usage: the decider calls the AMD Token Factory (an OpenAI-compatible endpoint serving Gemma-4-31B-IT). No ROCm
+profiling or GPU telemetry is claimed or included.
 
 ## Quickstart (offline, no API key)
 
@@ -14,7 +25,7 @@ Python 3.12+ and [uv](https://docs.astral.sh/uv/). Nothing below calls the netwo
 uv sync
 uv run python -m tenure.dashboard            # recorded dashboard at http://127.0.0.1:8765
 uv run python -m tenure.dashboard verify     # re-verify the SHA-256 ledger chain against head.json
-uv run python -m tenure.dashboard --out dashboard.html   # one self-contained page, no server
+uv run python -m tenure.dashboard --out docs/dashboard.html   # one self-contained page, no server (committed copy: docs/dashboard.html)
 TENURE_LLM_API_KEY=mock_key TENURE_LLM_BASE_URL=http://127.0.0.1:9/v1 uv run pytest   # offline suite (mock endpoint)
 ```
 
