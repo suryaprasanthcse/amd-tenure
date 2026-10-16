@@ -97,3 +97,5 @@ def test_cli_verify_and_static_page(tmp_path, capsys):
     assert "VERIFIED" in capsys.readouterr().out
     out = tmp_path / "d.html"
     assert dash.main(["--out", str(out)]) == 0 and out.stat().st_size > 20_000
+    assert "ledger.db" not in out.read_text(encoding="utf-8")  # static page: committed export only
+    assert [x["name"] for x in dash.verify_sources(db=None)["sources"]] == ["ledger.jsonl"]

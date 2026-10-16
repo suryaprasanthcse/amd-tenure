@@ -93,16 +93,19 @@ def _db_lines(db: Path) -> list[str]:
                         "prev_hash": ph, "hash": h}) for s, t, k, a, p, ps, ph, h in rows]
 
 
-def verify_sources(ledger: Path = LEDGER, head_path: Path = HEAD, db: Path = LEDGER_DB) -> dict[str, Any]:
+def verify_sources(ledger: Path = LEDGER, head_path: Path = HEAD, db: Path | None = LEDGER_DB) -> dict[str, Any]:
     """Recompute the SHA-256 chain from genesis now. The committed export is checked against head.json; a local
-    var/ledger.db, when present, is re-verified too and must contain the anchored head at its sequence number."""
+    var/ledger.db, when present, is re-verified too and must contain the anchored head at its sequence number.
+    `db=None` checks the committed export only (the static page uses this, so it is reproducible anywhere)."""
     h = json.loads(head_path.read_text(encoding="utf-8"))
     anchor = Head(int(h["seq"]), str(h["hash"]))
     rep = verify_jsonl(ledger.read_text(encoding="utf-8").splitlines(), anchor)
     out: dict[str, Any] = {"ok": rep.ok, "entries": rep.entries, "head_seq": anchor.seq, "head_hash": anchor.hash,
                            "reason": rep.reason, "sources": [{"name": ledger.name, "ok": rep.ok,
                                                               "detail": f"{rep.entries} entries vs head.json"}]}
-    if db.exists():
+    if db is None:
+        pass
+    elif db.exists():
         lines = _db_lines(db)
         drep = verify_jsonl(lines)
         entry = json.loads(lines[anchor.seq - 1]) if len(lines) >= anchor.seq else None
@@ -262,7 +265,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     data = load_data()
     if ns.out:
-        ns.out.write_text(render_html(data, verify_sources()), encoding="utf-8", newline="\n")
+        # the static page verifies the committed export only, never a local var/ledger.db
+        ns.out.write_text(render_html(data, verify_sources(db=None)), encoding="utf-8", newline="\n")
         print(f"wrote {ns.out}")
         return 0
     server = ThreadingHTTPServer(("127.0.0.1", ns.port), partial(_Handler, data=data))
