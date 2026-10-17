@@ -109,3 +109,12 @@ def test_telemetry_and_real_eval_come_from_recorded_runs(data):
     assert r["lower"] < r["x"] / r["n"] < r["upper"] and r["promoted"] == ["POSITIVE|V1", "POSITIVE|V2"]
     html = dash.render_html(data, dash.verify_sources(db=None))
     assert "AMD Token Factory telemetry" in html and "src/tenure/gpu.py" in html
+
+
+def test_site_export_has_index_and_redirect(tmp_path, data):
+    index, legacy = dash.write_site(tmp_path, data)
+    assert index.name == "index.html" and legacy.name == "dashboard.html"
+    page, stub = index.read_text(encoding="utf-8"), legacy.read_text(encoding="utf-8")
+    assert "TENURE" in page and "ledger.db" not in page and 'id="payload"' in page
+    assert 'url=index.html' in stub and 'location.replace("index.html"' in stub and len(stub) < 800
+    assert dash.main(["--site", str(tmp_path / "site")]) == 0 and (tmp_path / "site" / "index.html").exists()

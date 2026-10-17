@@ -5,7 +5,8 @@ dashboard fixture `exports/L-20261015-01/dashboard_data.json`, which `build_fixt
 D-POLICY run. The page is one self-contained HTML file (inline CSS, JS and SVG, no network, no dependencies).
 
     python -m tenure.dashboard                      # serve on http://127.0.0.1:8765 and open it
-    python -m tenure.dashboard --out dashboard.html # write the static page
+    python -m tenure.dashboard --out dashboard.html # write the static page to any path
+    python -m tenure.dashboard --site docs          # GitHub Pages site: docs/index.html + docs/dashboard.html redirect
     python -m tenure.dashboard verify               # print the ledger verification badge
     python -m tenure.dashboard build                # regenerate the fixture from var/runs (needs local run data)
 
@@ -250,6 +251,24 @@ def render_html(data: dict[str, Any], badge: dict[str, Any], served: bool = Fals
     return _TEMPLATE.replace("__PAYLOAD__", blob)
 
 
+REDIRECT_STUB = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>TENURE dashboard</title>
+<meta http-equiv="refresh" content="0; url=index.html"><link rel="canonical" href="index.html">
+<script>location.replace("index.html" + location.search + location.hash)</script></head>
+<body><p>The dashboard now lives at <a href="index.html">index.html</a>.</p></body></html>
+"""
+
+
+def write_site(out_dir: Path, data: dict[str, Any]) -> list[Path]:
+    """The Pages site: index.html is the dashboard (verified against the committed export only), and the
+    legacy dashboard.html is a redirect stub so links already shared keep working."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    index, legacy = out_dir / "index.html", out_dir / "dashboard.html"
+    index.write_text(render_html(data, verify_sources(db=None)), encoding="utf-8", newline="\n")
+    legacy.write_text(REDIRECT_STUB, encoding="utf-8", newline="\n")
+    return [index, legacy]
+
+
 class _Handler(BaseHTTPRequestHandler):
     def __init__(self, *args: Any, data: dict[str, Any], **kw: Any):
         self.data = data
@@ -274,6 +293,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m tenure.dashboard", description=__doc__.split("\n")[0])
     ap.add_argument("command", nargs="?", default="serve", choices=["serve", "verify", "build"])
     ap.add_argument("--out", type=Path, help="write the static page here instead of serving")
+    ap.add_argument("--site", type=Path, help="write index.html and the dashboard.html redirect into this directory")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--no-open", action="store_true")
     ap.add_argument("--run-dir", type=Path, default=ROOT / "var" / "runs" / "L-20261015-01")
@@ -291,6 +311,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"wrote {FIXTURE}")
         return 0
     data = load_data()
+    if ns.site:
+        print("wrote " + ", ".join(str(p) for p in write_site(ns.site, data)))
+        return 0
     if ns.out:
         # the static page verifies the committed export only, never a local var/ledger.db
         ns.out.write_text(render_html(data, verify_sources(db=None)), encoding="utf-8", newline="\n")

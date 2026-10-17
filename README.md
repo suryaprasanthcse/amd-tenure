@@ -25,7 +25,8 @@ Python 3.12+ and [uv](https://docs.astral.sh/uv/). Nothing below calls the netwo
 uv sync
 uv run python -m tenure.dashboard            # recorded dashboard at http://127.0.0.1:8765
 uv run python -m tenure.dashboard verify     # re-verify the SHA-256 ledger chain against head.json
-uv run python -m tenure.dashboard --out docs/dashboard.html   # one self-contained page, no server (committed copy: docs/dashboard.html)
+uv run python -m tenure.dashboard --site docs   # GitHub Pages site: docs/index.html (+ docs/dashboard.html redirect), no server
+uv run python -m tenure.dashboard --out page.html   # or one self-contained page at any path
 TENURE_LLM_API_KEY=mock_key TENURE_LLM_BASE_URL=http://127.0.0.1:9/v1 uv run pytest   # offline suite (mock endpoint)
 ```
 
