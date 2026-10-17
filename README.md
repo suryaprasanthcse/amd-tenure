@@ -2,6 +2,10 @@
 
 Earned autonomy for customer-resolution agents powered by Gemma-4-31B-IT on the AMD Token Factory.
 
+[![TENURE Autonomy Dashboard](docs/assets/dashboard_preview.jpg)](https://suryaprasanthcse.github.io/amd-tenure/)
+
+Live dashboard (click the preview): https://suryaprasanthcse.github.io/amd-tenure/
+
 TENURE lets an AI refund agent earn autonomy one cell (case type × order-value band) at a time. A cell is promoted only when statistics show the agent is as consistent as the human team. The agent demotes itself when it drifts, and every decision is recorded in a hash-chained ledger. The design is in [`TENURE_master_blueprint.md`](TENURE_master_blueprint.md) and the build plan is in [`RUNBOOK_TENURE.md`](RUNBOOK_TENURE.md).
 
 > Status: under construction for the AMD Developer Hackathon: ACT III (lablab.ai). Later sections are filled in from measured results as the build progresses.
